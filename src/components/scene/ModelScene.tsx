@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import { AlertTriangle, Box, Camera, ShieldCheck, ChevronDown, Focus, Keyboard, Layers, Maximize2, Minimize2, Minus, Plus, Rotate3d, Route, Settings2, Sparkles, Tag, TagsIcon, Waypoints, X } from 'lucide-react'
+import { AlertTriangle, Box, Camera, ShieldCheck, ChevronDown, ChevronUp, Focus, Keyboard, Layers, Maximize2, Minimize2, Minus, Plus, Rotate3d, Route, Settings2, Sparkles, Tag, TagsIcon, Waypoints, X } from 'lucide-react'
 import { effectiveDepth, useModelStore } from '../../store/modelStore'
 import { useUiStore } from '../../store/uiStore'
 import { localizedModel, localizedNode, t, typeName } from '../../i18n/translations'
@@ -257,6 +257,11 @@ export function ModelScene() {
   const focusMode = useUiStore((state) => state.focusMemory !== null || (!state.codeOpen && !state.sideOpen))
   const ui = useUiStore.getState
   const [gestureSettings, setGestureSettings] = useState(false)
+  // Camera preview: hidden (status bar only), small or large. Remembered per browser.
+  const [preview, setPreviewState] = useState<'hidden' | 'small' | 'large'>(() => {
+    try { const saved = localStorage.getItem('atlas.gesturePreview'); return saved === 'hidden' || saved === 'large' ? saved : 'small' } catch { return 'small' }
+  })
+  const setPreview = (next: typeof preview) => { setPreviewState(next); try { localStorage.setItem('atlas.gesturePreview', next) } catch { /* private mode */ } }
   const [toast, setToast] = useState<string | null>(null)
   const isCode = model.layout === 'code'
   const journey = useMemo(() => tensorJourney(model), [model])
@@ -366,9 +371,14 @@ export function ModelScene() {
       </button>
     </div>
 
-    <div className={`gesture-monitor ${handOn ? 'active' : ''}`}>
+    <div className={`gesture-monitor preview-${preview} ${handOn ? 'active' : ''}`}>
       <video ref={hand.videoRef} className={hand.mirror ? 'mirrored' : ''} muted playsInline autoPlay aria-label={t(locale, 'cameraPreview')} />
-      {handOn && <div className="gesture-monitor-info"><span className={`gesture-status-dot ${hand.status}`} />{t(locale, `gestureStatus_${hand.status}`)}<button type="button" title={t(locale, 'gestureSettings')} onClick={() => setGestureSettings((value) => !value)}><Settings2 size={13} /></button></div>}
+      {handOn && <div className="gesture-monitor-info"><span className={`gesture-status-dot ${hand.status}`} /><span className="gesture-status-text">{t(locale, `gestureStatus_${hand.status}`)}</span>
+        <button type="button" title={preview === 'hidden' ? tr(locale, 'Show camera preview', '展开摄像头画面') : tr(locale, 'Hide camera preview', '收起摄像头画面')} aria-label={preview === 'hidden' ? tr(locale, 'Show camera preview', '展开摄像头画面') : tr(locale, 'Hide camera preview', '收起摄像头画面')}
+          onClick={() => setPreview(preview === 'hidden' ? 'small' : 'hidden')}>{preview === 'hidden' ? <ChevronDown size={13} /> : <ChevronUp size={13} />}</button>
+        {preview !== 'hidden' && <button type="button" title={preview === 'large' ? tr(locale, 'Smaller preview', '缩小画面') : tr(locale, 'Larger preview', '放大画面')} aria-label={preview === 'large' ? tr(locale, 'Smaller preview', '缩小画面') : tr(locale, 'Larger preview', '放大画面')}
+          onClick={() => setPreview(preview === 'large' ? 'small' : 'large')}>{preview === 'large' ? <Minimize2 size={12} /> : <Maximize2 size={12} />}</button>}
+        <button type="button" title={t(locale, 'gestureSettings')} onClick={() => setGestureSettings((value) => !value)}><Settings2 size={13} /></button></div>}
       {handOn && gestureSettings && <div className="gesture-settings">
         {hand.devices.length > 0 && <label>{t(locale, 'gestureCamera')}<select value={hand.deviceId} onChange={(event) => void hand.start(event.target.value)}>{hand.devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `${t(locale, 'gestureCamera')} ${index + 1}`}</option>)}</select></label>}
         <label>{t(locale, 'gestureHand')}<select value={hand.preferredHand} onChange={(event) => hand.setPreferredHand(event.target.value as typeof hand.preferredHand)}><option value="any">{t(locale, 'gestureAnyHand')}</option><option value="left">{t(locale, 'gestureLeftHand')}</option><option value="right">{t(locale, 'gestureRightHand')}</option></select></label>

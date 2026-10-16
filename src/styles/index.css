@@ -700,8 +700,14 @@ button.reference-link { border: 0; cursor: pointer; font-family: inherit; }
 .gesture-monitor.active { display: block; animation: float-in .3s var(--ease); }
 .gesture-monitor video { display: block; width: 100%; height: 120px; object-fit: cover; background: #000; border-radius: 11px 11px 0 0; }
 .gesture-monitor video.mirrored { transform: scaleX(-1); }
+/* Hidden keeps the video element playing (hand tracking reads frames from it), just takes no room. */
+.gesture-monitor.preview-hidden video { height: 0; }
+.gesture-monitor.preview-large { width: 320px; }
+.gesture-monitor.preview-large video { height: 220px; }
+.gesture-monitor.preview-hidden .gesture-monitor-info { border-radius: 11px; }
+.gesture-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gesture-monitor-info { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 8px; color: var(--text-2); font-size: 10.5px; line-height: 1.2; }
-.gesture-monitor-info button { margin-left: auto; display: grid; place-items: center; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; }
+.gesture-monitor-info button { display: grid; place-items: center; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; }
 .gesture-status-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--faint); }
 .gesture-status-dot.tracking { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 .gesture-status-dot.error { background: var(--error); }

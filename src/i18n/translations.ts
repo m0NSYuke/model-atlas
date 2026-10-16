@@ -26,7 +26,7 @@ const messages = {
     gesture: 'Hand control', startGesture: 'Start hand control', stopGesture: 'Stop hand control', cameraPreview: 'Camera preview', gestureSettings: 'Hand control settings',
     gestureStatus_off: 'Camera off', gestureStatus_starting: 'Requesting camera', gestureStatus_loading: 'Loading hand model', gestureStatus_searching: 'Show one hand', gestureStatus_tracking: 'Hand detected', gestureStatus_error: 'Hand control error',
     gestureError_permission: 'Camera permission was denied. Allow access in your browser and try again.', gestureError_notFound: 'No camera was found.', gestureError_inUse: 'The camera is in use by another app.', gestureError_unsupported: 'This browser cannot run camera hand tracking.', gestureError_timeout: 'Camera did not respond. Check browser permission or try another browser.', gestureError_model: 'The local hand model could not load.', gestureError_unknown: 'Could not start the camera.',
-    gestureCamera: 'Camera', gestureHand: 'Active hand', gestureAnyHand: 'Either hand', gestureLeftHand: 'Left', gestureRightHand: 'Right', gestureSensitivity: 'Rotation sensitivity', gestureMirror: 'Mirror control', gestureDetail: 'MODULE DETAIL', gestureSubmodules: 'CHILD MODULES', gestureHint: 'Open hand and move to turn · fist → open to zoom in there · quick fist to zoom out · pinch to select, then open to zoom into it · hold pinch to inspect',
+    gestureCamera: 'Camera', gestureHand: 'Active hand', gestureAnyHand: 'Either hand', gestureLeftHand: 'Left', gestureRightHand: 'Right', gestureSensitivity: 'Rotation sensitivity', gestureMirror: 'Mirror control', gestureDetail: 'MODULE DETAIL', gestureSubmodules: 'CHILD MODULES', gestureHint: 'Open hand and move to turn · fist → quick open zooms in there · quick fist zooms out · relaxing back afterwards does nothing · pinch to select, then open to zoom into it · hold pinch to inspect',
   },
   zh: {
     subtitle: '模型架构探索器', localWorkspace: '本地工作区', importedWorkspace: '已导入模型',
@@ -53,7 +53,7 @@ const messages = {
     gesture: '手势控制', startGesture: '开启手势控制', stopGesture: '关闭手势控制', cameraPreview: '摄像头预览', gestureSettings: '手势设置',
     gestureStatus_off: '摄像头已关闭', gestureStatus_starting: '正在请求摄像头', gestureStatus_loading: '正在加载手部模型', gestureStatus_searching: '请将一只手放入画面', gestureStatus_tracking: '已识别手部', gestureStatus_error: '手势控制出错',
     gestureError_permission: '摄像头权限被拒绝。请在浏览器中允许后重试。', gestureError_notFound: '没有找到摄像头。', gestureError_inUse: '摄像头正被其他程序占用。', gestureError_unsupported: '当前浏览器不支持摄像头手势识别。', gestureError_timeout: '摄像头未响应，请检查浏览器权限或换用其他浏览器。', gestureError_model: '无法加载本地手部模型。', gestureError_unknown: '无法启动摄像头。',
-    gestureCamera: '摄像头', gestureHand: '操作手', gestureAnyHand: '任意手', gestureLeftHand: '左手', gestureRightHand: '右手', gestureSensitivity: '旋转灵敏度', gestureMirror: '镜像控制', gestureDetail: '模块细节', gestureSubmodules: '子模块', gestureHint: '张开手移动来转动 · 握拳→张开放大该处 · 快速握拳缩小 · 捏一下选中再张开放大该模块 · 长捏查看细节',
+    gestureCamera: '摄像头', gestureHand: '操作手', gestureAnyHand: '任意手', gestureLeftHand: '左手', gestureRightHand: '右手', gestureSensitivity: '旋转灵敏度', gestureMirror: '镜像控制', gestureDetail: '模块细节', gestureSubmodules: '子模块', gestureHint: '张开手移动来转动 · 握拳后快速张开放大该处 · 快速握拳缩小 · 缩放后手回到原姿势不算 · 捏一下选中再张开放大该模块 · 长捏查看细节',
   },
 } as const
 
