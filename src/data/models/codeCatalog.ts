@@ -18,6 +18,8 @@ import pi05 from './code/pi05.py?raw'
 import videoDit from './code/video_dit.py?raw'
 import causalVideo from './code/causal_video.py?raw'
 import gptTrain from './code/gpt_train.py?raw'
+import uniadet from './code/uniadet.py?raw'
+import visualad from './code/visualad.py?raw'
 import templateConfig from '../../../templates/atlas-template/atlas.json?raw'
 import templateModel from '../../../templates/atlas-template/model.py?raw'
 import templateData from '../../../templates/atlas-template/data.py?raw'
@@ -256,6 +258,26 @@ export const codeModels: CodeModelEntry[] = [
     files: { 'model.py': causalVideo },
     experiments: [
       exp('More context', '更多历史帧', 'CONTEXT_FRAMES = 6 makes the causal mask and attention maps larger.', 'CONTEXT_FRAMES = 6 让因果掩码和注意力图都变大。', 'CONTEXT_FRAMES = 3', 'CONTEXT_FRAMES = 6'),
+    ],
+  },
+  {
+    id: 'code-uniadet', name: 'UniADet', zhName: 'UniADet 无语言通用异常检测', family: { en: 'Anomaly detection', zh: '异常检测' }, year: 2026, reference: 'https://arxiv.org/abs/2601.05552',
+    description: 'Language-free zero- and few-shot anomaly detection: a frozen ViT, per-layer decoupled cls/seg weights instead of text, plus a normal-patch memory. Rebuilt from the paper; the official code (github.com/gaobb/UniADet) is not released yet.',
+    zhDescription: '不依赖语言的零样本/少样本异常检测：冻结 ViT，用逐层解耦的分类/分割权重代替文本，再加正常 patch 记忆库。按论文复现，官方代码（github.com/gaobb/UniADet）尚未发布。',
+    files: { 'model.py': uniadet },
+    experiments: [
+      exp('4-shot memory', '4 张正常提示图', 'K = 4 prompt images make the memory bank four times larger; learnable weights stay the same.', 'K = 4 时记忆库扩大到四倍，可学习权重不变。', 'SHOTS = 1 ', 'SHOTS = 4 '),
+      exp('Two layers only', '只取两层', 'Fewer readout layers: fewer W_cls / W_seg heads and memory lookups.', '读出层变少：W_cls / W_seg 头和记忆库查找都随之减少。', 'FEATURES_LIST = [4, 5, 6, 7, 8]', 'FEATURES_LIST = [6, 8]'),
+    ],
+  },
+  {
+    id: 'code-visualad', name: 'VisualAD', zhName: 'VisualAD 无语言零样本异常检测', family: { en: 'Anomaly detection', zh: '异常检测' }, year: 2026, reference: 'https://github.com/7HHHHH/VisualAD',
+    description: 'CVPR 2026 (arXiv 2603.07952): learnable anomaly and normal tokens inside a frozen CLIP ViT, refined per layer by spatial cross-attention (SCA) and scored against MLP-aligned patches (SAF). One training step of the official code.',
+    zhDescription: 'CVPR 2026（arXiv 2603.07952）：在冻结的 CLIP ViT 中插入可学习的异常/正常 token，经逐层空间交叉注意力（SCA）增强，再与 MLP 校准后的 patch（SAF）比较打分。画的是官方代码的一个训练步。',
+    files: { 'model.py': visualad },
+    experiments: [
+      exp('More anchors', '更多锚点', 'NUM_ANCHORS = 8 gives each SCA module more queries and a wider gate.', 'NUM_ANCHORS = 8 时每个 SCA 模块有更多 query，门控也更宽。', 'NUM_ANCHORS = 4', 'NUM_ANCHORS = 8'),
+      exp('224×224 input', '224×224 输入', '224×224 gives a 16×16 patch grid: 256 patches per layer and four times larger anomaly maps.', '224×224 会得到 16×16 的 patch 网格：每层 256 个 patch，异常图大四倍。', 'IMAGE_SIZE = 112', 'IMAGE_SIZE = 224'),
     ],
   },
 ]
