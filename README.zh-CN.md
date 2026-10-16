@@ -60,7 +60,7 @@ npm run dev
 | 导入模板 · CNN + 训练循环 | `templates/atlas-template`，画出一个完整训练步 | 94,762 |
 | GPT · 训练循环 | 同一个 GPT，加上 nanoGPT 风格的 `train.py` | 929,536 |
 
-另有 DDPM、DDIM、CFG、Latent Diffusion、Flow Matching、π0、π0.5、Video DiT、因果视频生成等代码模型，可在模型库里打开。参数量与真实 PyTorch 一致。
+另有 DDPM、DDIM、CFG、Latent Diffusion、Flow Matching、π0、π0.5、Video DiT、因果视频生成，以及异常检测模型 UniADet、VisualAD 等代码模型，可在模型库里打开。参数量与真实 PyTorch 一致。
 
 ## 导入你自己的项目
 

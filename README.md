@@ -60,7 +60,7 @@ Open the address printed in the terminal (http://127.0.0.1:5173 by default). On 
 | Import template · CNN + training loop | `templates/atlas-template`, draws a complete training step | 94,762 |
 | GPT · training loop | The same GPT plus a nanoGPT-style `train.py` | 929,536 |
 
-The model library also has code models for DDPM, DDIM, CFG, Latent Diffusion, Flow Matching, π0, π0.5, Video DiT and causal video generation. Parameter counts match real PyTorch.
+The model library also has code models for DDPM, DDIM, CFG, Latent Diffusion, Flow Matching, π0, π0.5, Video DiT, causal video generation, and the anomaly detectors UniADet and VisualAD. Parameter counts match real PyTorch.
 
 ## Import your own project
 
