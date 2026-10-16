@@ -5,15 +5,20 @@ import { useUiStore } from '../../store/uiStore'
 import { tr } from '../scene/useViewGraph'
 import { createShareLink, exportProject } from './projectActions'
 
+/** The Model Atlas mark (docs/brand/logo.svg): three layers narrowing upward, joined by a tensor path to its output. */
 export function BrandMark({ size = 26 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+  const top = { stroke: '#ffffff', strokeOpacity: 0.55, strokeWidth: 1, strokeLinejoin: 'round' as const }
+  return <svg width={size} height={size} viewBox="4 2 120 122" aria-hidden="true">
     <defs>
-      <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#38bdf8" /><stop offset="0.55" stopColor="#818cf8" /><stop offset="1" stopColor="#e879f9" /></linearGradient>
+      <radialGradient id="brand-glow"><stop offset="0" stopColor="#ffffff" /><stop offset=".45" stopColor="#f5d0fe" /><stop offset="1" stopColor="#e879f9" stopOpacity="0" /></radialGradient>
     </defs>
-    <path d="M16 2.5 L28.5 9.6 L28.5 22.4 L16 29.5 L3.5 22.4 L3.5 9.6 Z" fill="url(#brand-gradient)" opacity="0.16" />
-    <path d="M16 2.5 L28.5 9.6 L28.5 22.4 L16 29.5 L3.5 22.4 L3.5 9.6 Z" fill="none" stroke="url(#brand-gradient)" strokeWidth="1.9" strokeLinejoin="round" />
-    <path d="M3.5 9.6 L16 16.8 L28.5 9.6 M16 16.8 L16 29.5" fill="none" stroke="url(#brand-gradient)" strokeWidth="1.5" strokeLinejoin="round" opacity="0.75" />
-    <circle cx="16" cy="16.8" r="2.7" fill="url(#brand-gradient)" />
+    <polygon points="18,86.56 64,113.12 64,121.12 18,94.56" fill="#0ea5e9" /><polygon points="64,113.12 110,86.56 110,94.56 64,121.12" fill="#0369a1" /><polygon points="64,60 110,86.56 64,113.12 18,86.56" fill="#7dd3fc" {...top} />
+    <polygon points="29,63.21 64,83.41 64,91.41 29,71.21" fill="#6366f1" /><polygon points="64,83.41 99,63.21 99,71.21 64,91.41" fill="#4338ca" /><polygon points="64,43 99,63.21 64,83.41 29,63.21" fill="#a5b4fc" {...top} />
+    <polygon points="40,40.86 64,54.71 64,62.71 40,48.86" fill="#d946ef" /><polygon points="64,54.71 88,40.86 88,48.86 64,62.71" fill="#a21caf" /><polygon points="64,27 88,40.86 64,54.71 40,40.86" fill="#f0abfc" {...top} />
+    <line x1="64" y1="40.86" x2="64" y2="12" stroke="#e879f9" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="64" cy="12" r="8.5" fill="url(#brand-glow)" />
+    <circle cx="64" cy="12" r="4.6" fill="#ffffff" stroke="#d946ef" strokeWidth="2.2" />
+    <circle cx="64" cy="40.86" r="3.2" fill="#ffffff" stroke="#d946ef" strokeWidth="1.6" />
   </svg>
 }
 
