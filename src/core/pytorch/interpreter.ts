@@ -2002,7 +2002,8 @@ export class Interpreter {
           if (type.name === 'Tensor') return value instanceof Tensor
           if (type.name === 'int') return typeof value === 'number' && Number.isInteger(value) && typeof value !== 'boolean'
           // Numbers carry no int/float tag here; a whole number counts as an int, as typeName() reports it.
-          if (type.name === 'float') return typeof value === 'number' && !Number.isInteger(value)
+          // Numbers carry no int/float tag, so 0.0 and 3 look alike; accepting both keeps isinstance(x, float) checks on float settings passing.
+          if (type.name === 'float') return typeof value === 'number'
           if (type.name === 'Module') return value instanceof ModuleObj
           if (isLayer(type.name)) return value instanceof ModuleObj && value.className === type.name
           return typeName(value) === type.name

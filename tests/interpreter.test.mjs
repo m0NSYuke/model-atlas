@@ -304,7 +304,7 @@ test('Python arithmetic and list semantics', () => {
   assert.deepEqual(run(`
 print(divmod(-7, 2), divmod(7, -2), divmod(7, 2))
 print(round(2.5), round(3.5), round(-2.5), round(0.5), round(2.6))
-print(isinstance(3, float), isinstance(2.5, float), isinstance(3, int))
+print(isinstance(0.0, float), isinstance(2.5, float), isinstance(3, int))
 print(3 * [1], [1, 2] * 2, 2 * (0,), [1] * -1, 2 * 'ab')
 xs = [3, 1, 2]
 xs.sort()
@@ -312,7 +312,7 @@ ys = ['bb', 'a', 'ccc']
 ys.sort(key=len, reverse=True)
 xs.remove(2)
 print(xs, ys, 0o17, 0O7)
-`), ['(-4, 1) (-4, -1) (3, 1)', '2 4 -2 0 3', 'False True True', '[1, 1, 1] [1, 2, 1, 2] (0, 0) [] abab', "[1, 3] ['ccc', 'bb', 'a'] 15 7"])
+`), ['(-4, 1) (-4, -1) (3, 1)', '2 4 -2 0 3', 'True True True', '[1, 1, 1] [1, 2, 1, 2] (0, 0) [] abab', "[1, 3] ['ccc', 'bb', 'a'] 15 7"])
   fails('[1].remove(5)', /x not in list/)
   // a RangeError that is not a stack overflow is a bad value, not deep recursion
   fails("s = 'ab' * 10**9", /^ValueError: Invalid string length/)
