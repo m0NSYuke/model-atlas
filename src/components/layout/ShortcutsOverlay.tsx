@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { Keyboard, X } from 'lucide-react'
 import { useModelStore } from '../../store/modelStore'
 import { tr } from '../scene/useViewGraph'
+import { useDialogFocus } from './useDialogFocus'
 
 const groups: { title: [string, string]; rows: [string[], string, string][] }[] = [
   {
@@ -41,14 +42,11 @@ const groups: { title: [string, string]; rows: [string[], string, string][] }[] 
 
 export function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
   const locale = useModelStore((state) => state.locale)
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const dialog = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialog, onClose)
   const mouse = (key: string) => locale === 'zh' ? ({ Drag: '左键拖动', 'Right-drag': '右键拖动', Wheel: '滚轮', 'Double-click': '双击' } as Record<string, string>)[key] ?? key : key
   return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <div className="shortcuts-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+    <div ref={dialog} className="shortcuts-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" tabIndex={-1}>
       <header className="dialog-heading">
         <div className="dialog-icon"><Keyboard size={18} /></div>
         <div><h2 id="shortcuts-title">{tr(locale, 'Keyboard shortcuts', '快捷键')}</h2><p>{tr(locale, 'Single-key shortcuts pause while you type in the editor.', '在编辑器里输入时，单键快捷键会自动暂停。')}</p></div>

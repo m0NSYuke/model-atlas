@@ -9,6 +9,7 @@ import { tr } from '../scene/useViewGraph'
 import { formatCount, usePalette } from '../scene/theme'
 import { exportProject } from './projectActions'
 import { toggleSideDock, toggleSideSection } from './Rail'
+import { useDialogFocus } from './useDialogFocus'
 
 interface Item { id: string; group: string; label: string; detail?: string; keys?: string; icon: ReactNode; run: () => void; search: string }
 
@@ -21,6 +22,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [index, setIndex] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const list = useRef<HTMLDivElement>(null)
+  const dialog = useRef<HTMLDivElement>(null)
+  // Before the input takes focus below, so the dialog remembers what to return focus to.
+  useDialogFocus(dialog, onClose)
 
   const items = useMemo<Item[]>(() => {
     const ui = useUiStore.getState
@@ -80,7 +84,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
 
   let lastGroup = ''
   return <div className="dialog-backdrop palette-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <div className="palette" role="dialog" aria-modal="true" aria-label={tr(locale, 'Command palette', '命令面板')}>
+    <div ref={dialog} className="palette" role="dialog" aria-modal="true" tabIndex={-1} aria-label={tr(locale, 'Command palette', '命令面板')}>
       <div className="palette-input">
         <Search size={17} />
         <input ref={input} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tr(locale, 'Search actions, models or layers…', '搜索操作、模型或层…')}

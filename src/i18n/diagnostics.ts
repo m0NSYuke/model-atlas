@@ -16,7 +16,12 @@ export function localizeDiagnostic(message: string, locale: Locale): string {
   if (message.includes('must be a positive integer')) return `${message.split(' ')[0]} 必须是正整数`
   if (message.includes('definition or call was not found')) return '未找到 DownsampleCausal3D 定义或调用'
   if (message.includes('kernel_size produces a non-positive')) return 'kernel_size 使输出维度小于 1'
-  if (message.includes('is not valid JSON') || message.includes('Unexpected token') || message.includes('Expected property name')) return 'JSON 语法无效'
+  // JSON.parse errors (wording differs between browsers): an empty or cut-off file, or a syntax error.
+  if (/Unexpected end of JSON input|JSON\.parse: unexpected end of data|JSON Parse error: Unexpected EOF/.test(message)) return 'JSON 不完整：文件是空的或在中途被截断'
+  if (/is not valid JSON|Unexpected token|Expected property name|Expected double-quoted property name|Unterminated string in JSON|Bad (control|escaped) character in JSON|after (property value|array element) in JSON|non-whitespace character after JSON|JSON\.parse:|JSON Parse error/.test(message)) {
+    const where = /line (\d+) column (\d+)/.exec(message)
+    return where ? `JSON 语法无效（第 ${where[1]} 行第 ${where[2]} 列）` : 'JSON 语法无效'
+  }
   for (const [pattern, render] of pythonMessages) {
     const match = pattern.exec(message)
     if (match) return render(...match.slice(1))
@@ -51,5 +56,6 @@ const pythonMessages: [RegExp, (...parts: string[]) => string][] = [
   [/^while loop exceeded/, () => 'while 循环超过 10,000 次，检查循环条件'],
   [/^The traced graph has more than (\d+) operations/, (max) => `追踪到的操作超过 ${max} 个；请减少层数或深度后再画`],
   [/^ZeroDivisionError/, () => '除以零（ZeroDivisionError）'],
+  [/^AssertionError: (.*)$/, (detail) => `断言失败（AssertionError: ${detail}）`],
   [/^'(.+)' object is not callable$/, (type) => `${type} 对象不能被调用`],
 ]

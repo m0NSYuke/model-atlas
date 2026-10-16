@@ -4,7 +4,7 @@ import { ModelTree } from '../model-tree/ModelTree'
 import { ModelScene } from '../scene/ModelScene'
 import { ModuleInspector } from '../inspector/ModuleInspector'
 import { useModelStore } from '../../store/modelStore'
-import { defaultWidths, useUiStore } from '../../store/uiStore'
+import { defaultWidths, fitDocks, useUiStore } from '../../store/uiStore'
 import { getNode } from '../../core/model-ir/utils'
 import { typeName } from '../../i18n/translations'
 import { tr } from '../scene/useViewGraph'
@@ -33,6 +33,22 @@ function ResizeHandle({ side, onDrag, onReset, label }: { side: 'left' | 'right'
     onPointerMove={(event) => { if (start.current) onDrag(event.clientX - start.current.x, start.current.width) }}
     onPointerUp={() => { start.current = null; document.body.classList.remove('is-resizing') }}
     onPointerCancel={() => { start.current = null; document.body.classList.remove('is-resizing') }} />
+}
+
+/** The window's inner width, kept up to date. */
+function useWindowWidth() {
+  const [width, setWidth] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const update = () => setWidth(window.innerWidth)
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  return width
+}
+
+/** A collapsed dock leaves the tab order and the accessibility tree (React 18 has no `inert` prop). */
+function useInert(ref: React.RefObject<HTMLElement>, inert: boolean) {
+  useEffect(() => { ref.current?.toggleAttribute('inert', inert) }, [ref, inert])
 }
 
 function DockSection({ title, icon, open, onToggle, extra, children, style }: { title: string; icon: ReactNode; open: boolean; onToggle: () => void; extra?: ReactNode; children: ReactNode; style?: React.CSSProperties }) {
@@ -102,6 +118,12 @@ export function AppShell() {
   const setWidth = useUiStore((state) => state.setWidth)
   const setOverlay = useUiStore((state) => state.setOverlay)
   const [mounted, setMounted] = useState(false)
+  const windowWidth = useWindowWidth()
+  const widths = fitDocks({ codeOpen, sideOpen, codeWidth, sideWidth }, windowWidth)
+  const leftDock = useRef<HTMLElement>(null)
+  const rightDock = useRef<HTMLElement>(null)
+  useInert(leftDock, !codeOpen)
+  useInert(rightDock, !sideOpen)
   useShortcuts()
   // Skip the dock animation on first paint so restored layouts appear instantly.
   useEffect(() => { const frame = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(frame) }, [])
@@ -112,7 +134,7 @@ export function AppShell() {
 
   return <div className={`app ${mounted ? 'ready' : ''}`}>
     <Rail />
-    <aside className={`dock dock-left ${codeOpen ? 'open' : 'closed'}`} style={{ ['--dock-w' as string]: `${codeWidth}px` }} aria-hidden={!codeOpen}>
+    <aside ref={leftDock} className={`dock dock-left ${codeOpen ? 'open' : 'closed'}`} style={{ ['--dock-w' as string]: `${widths.codeWidth}px` }} aria-hidden={!codeOpen}>
       <div className="dock-inner"><div className="dock-content">
         {codeShown && <Suspense fallback={<div className="editor-loading">{tr(locale, 'Loading editor…', '正在加载编辑器…')}</div>}>
           <CodeWorkspace onCollapse={() => useUiStore.getState().togglePanel('codeOpen', false)} collapseIcon={<PanelLeftClose size={15} />} />
@@ -123,7 +145,7 @@ export function AppShell() {
     <main className="stage-slot">
       <ModelScene />
     </main>
-    <aside className={`dock dock-right ${sideOpen ? 'open' : 'closed'}`} style={{ ['--dock-w' as string]: `${sideWidth}px` }} aria-hidden={!sideOpen}>
+    <aside ref={rightDock} className={`dock dock-right ${sideOpen ? 'open' : 'closed'}`} style={{ ['--dock-w' as string]: `${widths.sideWidth}px` }} aria-hidden={!sideOpen}>
       <ResizeHandle side="right" label={tr(locale, 'Drag to resize · double-click to reset', '拖动调整宽度 · 双击复位')} onDrag={(delta, start) => setWidth('sideWidth', start - delta)} onReset={() => setWidth('sideWidth', defaultWidths.sideWidth)} />
       <div className="dock-inner"><div className="dock-content"><SideDock /></div></div>
     </aside>

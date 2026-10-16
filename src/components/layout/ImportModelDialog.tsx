@@ -7,6 +7,7 @@ import { t } from '../../i18n/translations'
 import { localizeDiagnostic } from '../../i18n/diagnostics'
 import { useModelStore } from '../../store/modelStore'
 import { formatCount } from '../scene/theme'
+import { useDialogFocus } from './useDialogFocus'
 import aiPrompt from '../../../templates/ai-import-prompt.md?raw'
 
 const MAX_FILE = 2_000_000
@@ -27,6 +28,8 @@ export function ImportModelDialog({ onClose }: { onClose: () => void }) {
   const importFiles = useModelStore((state) => state.importFiles)
   const filesInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement>(null)
+  const dialog = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialog, onClose)
   const [error, setError] = useState<string | null>(null)
   const [reading, setReading] = useState(false)
   const [picked, setPicked] = useState<Picked[]>([])
@@ -143,7 +146,7 @@ export function ImportModelDialog({ onClose }: { onClose: () => void }) {
   const python = picked.filter((file) => file.name.endsWith('.py') && included.has(file.name))
 
   return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <div className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div ref={dialog} className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title" tabIndex={-1}>
       <div className="dialog-heading"><div className="dialog-icon"><FileJson2 size={19} /></div><div><h2 id="import-title">{t(locale, 'importTitle')}</h2><p>{zh ? '文件只在本机浏览器里读取和追踪，不上传、不联网、不需要 API。' : 'Files are read and traced in this browser only: nothing is uploaded, no network, no API key.'}</p></div><button type="button" className="icon-button" aria-label={t(locale, 'close')} onClick={onClose}><X size={18} /></button></div>
 
       {!picked.length ? <>

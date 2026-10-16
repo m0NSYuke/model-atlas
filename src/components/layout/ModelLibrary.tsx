@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { ArrowUpRight, Code2, FilePlus2, FolderOpen, Map as MapIcon, Trash2, Upload, X } from 'lucide-react'
 import { codeModels } from '../../data/models/codeCatalog'
 import { studyCatalog, type StudyCategory } from '../../data/models/studyCatalog'
@@ -7,6 +7,7 @@ import { localizedModel, localizedModelDescription, t } from '../../i18n/transla
 import { useModelStore } from '../../store/modelStore'
 import { formatCount, usePalette } from '../scene/theme'
 import { tr } from '../scene/useViewGraph'
+import { useDialogFocus } from './useDialogFocus'
 
 const categories: { id: StudyCategory; key: 'piCategory' | 'diffusionCategory' | 'videoCategory' }[] = [
   { id: 'pi', key: 'piCategory' }, { id: 'diffusion', key: 'diffusionCategory' }, { id: 'video', key: 'videoCategory' },
@@ -46,11 +47,8 @@ export function ModelLibrary({ onClose, onImport }: { onClose: () => void; onImp
   const edited = new Set(projects.filter((item) => item.key.startsWith('builtin:')).map((item) => item.builtInId))
   const summaries = useMemo(codeSummaries, [])
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const dialog = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialog, onClose)
 
   const open = (id: string) => { loadBuiltIn(id); onClose() }
   const openProject = (key: string) => { useModelStore.getState().openProject(key); onClose() }
@@ -60,7 +58,7 @@ export function ModelLibrary({ onClose, onImport }: { onClose: () => void; onImp
   const when = (time: number) => new Date(time).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   return <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <div className="library" role="dialog" aria-modal="true" aria-labelledby="library-title">
+    <div ref={dialog} className="library" role="dialog" aria-modal="true" aria-labelledby="library-title" tabIndex={-1}>
       <header className="library-head">
         <div>
           <h2 id="library-title">{tr(locale, 'Model library', '模型库')}</h2>
