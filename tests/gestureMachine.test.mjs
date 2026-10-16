@@ -81,6 +81,40 @@ test('a quick close into a fist zooms out; a slow curl does nothing', () => {
   assert.deepEqual(slowActions.filter((action) => action.type === 'zoom'), [])
 })
 
+test('reopening the hand after a fist zoom-out is not read as a zoom in', () => {
+  const machine = new GestureMachine()
+  // Open, close quickly (zoom out), then the hand relaxes back open at a natural pace.
+  const frames = [...Array(6).fill(OPEN_HAND), 0.6, 0.3, FIST, FIST, FIST, FIST, 0.3, 0.6, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND]
+  const zooms = run(machine, frames.map((openness, i) => sample(i * 40, false, 0.5, 0.5, openness))).filter((action) => action.type === 'zoom')
+  assert.equal(zooms.length, 1)
+  assert.ok(zooms[0].factor < 1)
+})
+
+test('pumping the hand zooms out step by step: each reopen is a return stroke', () => {
+  const machine = new GestureMachine()
+  const pump = [OPEN_HAND, OPEN_HAND, 0.3, FIST, FIST, FIST, 0.6, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND]
+  const frames = [...Array(4).fill(OPEN_HAND), ...pump, ...pump, ...pump]
+  const zooms = run(machine, frames.map((openness, i) => sample(i * 40, false, 0.5, 0.5, openness))).filter((action) => action.type === 'zoom')
+  assert.equal(zooms.length, 3)
+  assert.ok(zooms.every((action) => action.factor < 1))
+})
+
+test('pumping the other way zooms in step by step: each close is a return stroke', () => {
+  const machine = new GestureMachine()
+  const pump = [FIST, FIST, 0.6, OPEN_HAND, OPEN_HAND, OPEN_HAND, 0.3, FIST, FIST, FIST, FIST, FIST, FIST, FIST, FIST, FIST]
+  const frames = [...Array(4).fill(FIST), ...pump, ...pump]
+  const zooms = run(machine, frames.map((openness, i) => sample(i * 40, false, 0.5, 0.5, openness))).filter((action) => action.type === 'zoom')
+  assert.equal(zooms.length, 2)
+  assert.ok(zooms.every((action) => action.factor > 1))
+})
+
+test('a fist held past the return window can open to zoom in again', () => {
+  const machine = new GestureMachine()
+  const frames = [...Array(4).fill(OPEN_HAND), 0.3, FIST, ...Array(45).fill(FIST), 0.6, OPEN_HAND]
+  const zooms = run(machine, frames.map((openness, i) => sample(i * 40, false, 0.5, 0.5, openness))).filter((action) => action.type === 'zoom')
+  assert.deepEqual(zooms.map((action) => action.factor > 1), [false, true])
+})
+
 test('zooming in again: open, point (no zoom out), then open again', () => {
   const machine = new GestureMachine()
   const frames = [FIST, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND, OPEN_HAND,
@@ -184,4 +218,13 @@ test('pinch hysteresis, pointing, and mirror mapping use normalized hand landmar
   assert.equal(tracker.update(points, 120).pinched, true)
   points[4] = { x: 0.72, y: 0.42, z: 0 }
   assert.equal(tracker.update(points, 160).pinched, false)
+})
+
+test('real landmarks: open, fist, open again zooms out once and nothing else', () => {
+  const tracker = new HandIntentTracker()
+  const machine = new GestureMachine()
+  const fist = hand({ index: false, middle: false, ring: false, pinky: false })
+  const poses = [...Array(8).fill(hand()), ...Array(8).fill(fist), ...Array(12).fill(hand())]
+  const actions = poses.flatMap((points, i) => machine.update(tracker.update(points, i * 40), null))
+  assert.deepEqual(actions.filter((action) => action.type === 'zoom').map((action) => action.factor < 1), [true])
 })

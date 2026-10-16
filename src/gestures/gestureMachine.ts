@@ -27,6 +27,11 @@ export const FLICK_MS = 450
 export const ZOOM_STEP = 1.45
 /** A node picked by a quick pinch stays the zoom target for this long. */
 export const ANCHOR_MS = 4000
+/**
+ * After a zoom the hand naturally goes back to the pose it came from (a fist reopens, an opened hand relaxes).
+ * The reverse flick within this time is that return stroke, not a command.
+ */
+export const RETURN_MS = 1500
 const OPEN_SETTLE_MS = 140
 const AFTER_ZOOM_MS = 260
 
@@ -36,6 +41,7 @@ export class GestureMachine {
   private openSince: number | null = null
   private previousPalm: { x: number; y: number } | null = null
   private lastZoomAt = -Infinity
+  private lastZoomDirection: 'in' | 'out' | null = null
   private anchor: { id: string; until: number } | null = null
 
   reset() {
@@ -44,6 +50,7 @@ export class GestureMachine {
     this.openSince = null
     this.previousPalm = null
     this.anchor = null
+    this.lastZoomDirection = null
   }
 
   update(sample: HandIntent, hoveredNodeId: string | null): GestureAction[] {
@@ -80,7 +87,6 @@ export class GestureMachine {
 
   /** A quick open is a zoom in at the point the hand opened over; a quick close into a fist zooms out. */
   private flick(sample: HandIntent): GestureAction[] | null {
-    if (sample.timestamp - this.lastZoomAt < FLICK_MS) return null
     let opening = sample.openness >= OPEN
     let closing = sample.openness <= CLOSED && !sample.pointing
     if (!opening && !closing) return null
@@ -92,9 +98,17 @@ export class GestureMachine {
     opening &&= from.openness <= (this.anchor ? 0.5 : CLOSED)
     closing &&= from.openness >= OPEN
     if (!opening && !closing) return null
+    const direction = opening ? 'in' : 'out'
+    const returning = this.lastZoomDirection !== null && this.lastZoomDirection !== direction && sample.timestamp - this.lastZoomAt < RETURN_MS
     this.lastZoomAt = sample.timestamp
     this.shapes = []
     this.previousPalm = null
+    if (returning) {
+      // Consumed: the next stroke in either direction is a command again.
+      this.lastZoomDirection = null
+      return []
+    }
+    this.lastZoomDirection = direction
     if (closing) return [{ type: 'zoom', factor: 1 / ZOOM_STEP, x: from.x, y: from.y, id: null }]
     const anchor = this.anchor
     this.anchor = null
