@@ -39,27 +39,31 @@ export class PyDict {
   map = new Map<Primitive, Value>()
   constructor(entries: [Primitive, Value][] = []) { entries.forEach(([key, value]) => this.map.set(key, value)) }
 }
+/** A range is never materialized up front: `range(10**9)` must cost nothing until it is walked. */
 export class PyRange {
   constructor(public start: number, public stop: number, public step: number) {}
-  get items(): number[] {
-    const values: number[] = []
-    if (this.step > 0) for (let value = this.start; value < this.stop; value += this.step) values.push(value)
-    else for (let value = this.start; value > this.stop; value += this.step) values.push(value)
-    return values
-  }
+  get length(): number { return Math.max(0, Math.ceil((this.stop - this.start) / this.step)) }
+  at(index: number): number { return this.start + index * this.step }
+  *values(): Generator<number> { for (let index = 0; index < this.length; index++) yield this.at(index) }
 }
 export class PySlice { constructor(public start: number | null, public stop: number | null, public step: number | null) {} }
 export const Ellipsis = { kind: 'ellipsis' as const }
 
 export class Scope {
   vars = new Map<string, Value>()
+  /** Names declared `global` or `nonlocal` here, mapped to the scope that holds them. */
+  declared?: Map<string, Scope>
   constructor(public parent?: Scope) {}
   lookup(name: string): Value | undefined {
     for (let scope: Scope | undefined = this; scope; scope = scope.parent) {
+      const target: Scope | undefined = scope.declared?.get(name)
+      if (target && target !== scope) return target.lookup(name)
       if (scope.vars.has(name)) return scope.vars.get(name)
     }
     return undefined
   }
+  /** The scope an assignment to `name` writes to. */
+  binding(name: string): Scope { return this.declared?.get(name) ?? this }
 }
 
 export class PyFunction {

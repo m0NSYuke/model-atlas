@@ -118,7 +118,7 @@ export function tokenize(source: string, file = '<code>'): Token[] {
       continue
     }
     if (/[0-9]/.test(char) || (char === '.' && /[0-9]/.test(text[index + 1] ?? ''))) {
-      const match = /^(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?j?)/.exec(text.slice(index))!
+      const match = /^(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?j?)/.exec(text.slice(index))!
       push('number', match[0].replace(/_/g, ''), index)
       index += match[0].length
       continue
