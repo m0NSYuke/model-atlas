@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/m0NSYuke/model-atlas.git"
+  },
   "engines": {
     "node": ">=22.6.0"
   },
