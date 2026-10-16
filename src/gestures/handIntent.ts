@@ -5,7 +5,25 @@ export interface HandIntent {
   y: number
   pinched: boolean
   pointing: boolean
+  /** Palm centre (wrist and finger bases), which stays put while the fingers open or close. */
+  palmX: number
+  palmY: number
+  /** 0 for a fist, 1 for a fully spread hand. */
+  openness: number
   timestamp: number
+}
+
+const FINGERS = [[8, 5], [12, 9], [16, 13], [20, 17]] as const
+
+/** How far the four fingers reach out from the wrist, relative to their own knuckles. */
+export function handOpenness(points: Landmark[], aspect = 4 / 3): number {
+  let sum = 0
+  for (const [tip, base] of FINGERS) {
+    const reach = distance(points[0], points[tip], aspect) / Math.max(distance(points[0], points[base], aspect), 0.01)
+    // About 1.0 when the finger is curled into the palm, about 1.9 when straight.
+    sum += Math.max(0, Math.min(1, (reach - 1.05) / 0.75))
+  }
+  return sum / FINGERS.length
 }
 
 function distance(a: Landmark, b: Landmark, aspect = 1) {
@@ -35,10 +53,13 @@ class OneEuro {
 export class HandIntentTracker {
   private x = new OneEuro()
   private y = new OneEuro()
+  private palmX = new OneEuro()
+  private palmY = new OneEuro()
+  private open = new OneEuro()
   private pinched = false
   private pinchFrames = 0
 
-  reset() { this.x.reset(); this.y.reset(); this.pinched = false; this.pinchFrames = 0 }
+  reset() { this.x.reset(); this.y.reset(); this.palmX.reset(); this.palmY.reset(); this.open.reset(); this.pinched = false; this.pinchFrames = 0 }
 
   update(points: Landmark[], timestamp: number, aspect = 4 / 3, mirror = true): HandIntent | null {
     if (points.length < 21) { this.reset(); return null }
@@ -54,11 +75,18 @@ export class HandIntentTracker {
     const curled = ([12, 16, 20] as const).every((tip) => distance(points[0], points[tip], aspect) < distance(points[0], points[tip - 2], aspect) * 1.14)
     const pointing = extended && curled
     const rawX = mirror ? 1 - points[8].x : points[8].x
+    const base = [0, 5, 9, 13, 17].map((index) => points[index])
+    const rawPalmX = base.reduce((total, point) => total + point.x, 0) / base.length
+    const rawPalmY = base.reduce((total, point) => total + point.y, 0) / base.length
+    const clamp = (value: number) => Math.max(0, Math.min(1, value))
     return {
       x: Math.max(0, Math.min(1, this.x.update(rawX, timestamp))),
       y: Math.max(0, Math.min(1, this.y.update(points[8].y, timestamp))),
       pinched: this.pinched,
       pointing,
+      palmX: clamp(this.palmX.update(mirror ? 1 - rawPalmX : rawPalmX, timestamp)),
+      palmY: clamp(this.palmY.update(rawPalmY, timestamp)),
+      openness: clamp(this.open.update(handOpenness(points, aspect), timestamp)),
       timestamp,
     }
   }
