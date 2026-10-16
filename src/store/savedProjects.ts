@@ -1,6 +1,8 @@
 // "My projects": every imported project, blank model and edited built-in model is kept in this browser,
 // one localStorage entry per project, so switching models never loses code.
 
+import { codeFilesOrNull, isPlainObject } from '../core/validate'
+
 export interface ProjectInfo {
   key: string
   name: string
@@ -24,8 +26,17 @@ function storage(): Storage | null {
 
 export function listProjects(): ProjectInfo[] {
   try {
-    const list = JSON.parse(storage()?.getItem(indexKey) ?? '[]') as ProjectInfo[]
-    return Array.isArray(list) ? list.filter((item) => item && typeof item.key === 'string').sort((a, b) => b.updatedAt - a.updatedAt) : []
+    const list: unknown = JSON.parse(storage()?.getItem(indexKey) ?? '[]')
+    if (!Array.isArray(list)) return []
+    const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : 0
+    return list.filter((item): item is Record<string, unknown> => isPlainObject(item) && typeof item.key === 'string')
+      .map((item): ProjectInfo => ({
+        key: item.key as string,
+        name: typeof item.name === 'string' ? item.name : item.key as string,
+        builtInId: typeof item.builtInId === 'string' ? item.builtInId : null,
+        updatedAt: number(item.updatedAt), fileCount: number(item.fileCount), bytes: number(item.bytes),
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
   } catch { return [] }
 }
 
@@ -33,8 +44,8 @@ export function readProject(key: string): SavedProjectFiles | null {
   const info = listProjects().find((item) => item.key === key)
   if (!info) return null
   try {
-    const codeFiles = JSON.parse(storage()?.getItem(entryKey(key)) ?? 'null') as Record<string, string> | null
-    return codeFiles && typeof codeFiles === 'object' ? { ...info, codeFiles } : null
+    const codeFiles = codeFilesOrNull(JSON.parse(storage()?.getItem(entryKey(key)) ?? 'null'))
+    return codeFiles ? { ...info, codeFiles } : null
   } catch { return null }
 }
 

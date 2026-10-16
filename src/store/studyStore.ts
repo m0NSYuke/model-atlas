@@ -5,6 +5,7 @@ import { buildModelFromCode } from '../core/pytorch'
 import { codeModelById } from '../data/models/codeCatalog'
 import { diffModels, type ModelDiff } from '../core/study/diff'
 import { useModelStore } from './modelStore'
+import { isPlainObject, stringRecord } from '../core/validate'
 
 // Study tools: shape lens, change comparison, path tracing, notes and the reading checklist.
 // Notes and answers are the reader's own and stay in this browser (and in share links / exports).
@@ -39,7 +40,20 @@ interface StudyState extends Saved {
 const defaults: Saved = { shapeLens: true, compare: true, notes: {}, answers: {}, checks: {} }
 
 function load(): Saved {
-  try { return { ...defaults, ...(JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') ?? {}) } } catch { return defaults }
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null')
+    if (!isPlainObject(saved)) return defaults
+    // Per model: notes and answers are text, checks are lists of ticked keys; anything else is dropped.
+    const perModel = <T>(value: unknown, read: (entry: unknown) => T | null): Record<string, T> =>
+      Object.fromEntries(Object.entries(isPlainObject(value) ? value : {}).flatMap(([id, entry]) => { const item = read(entry); return item ? [[id, item]] : [] }))
+    return {
+      shapeLens: typeof saved.shapeLens === 'boolean' ? saved.shapeLens : defaults.shapeLens,
+      compare: typeof saved.compare === 'boolean' ? saved.compare : defaults.compare,
+      notes: perModel(saved.notes, stringRecord),
+      answers: perModel(saved.answers, stringRecord),
+      checks: perModel(saved.checks, (entry) => Array.isArray(entry) ? entry.filter((key): key is string => typeof key === 'string') : null),
+    }
+  } catch { return defaults }
 }
 
 export const useStudyStore = create<StudyState>((set) => ({

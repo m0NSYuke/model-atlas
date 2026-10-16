@@ -8,6 +8,7 @@ import { codeFiles as demoCodeFiles } from '../data/models/vae3d/codeFiles'
 import { studyById } from '../data/models/studyCatalog'
 import { blankTemplate, codeModelById } from '../data/models/codeCatalog'
 import { builtInProjectKey, listProjects, readProject, removeProject, sameFiles, uniqueProjectKey, writeProject, type ProjectInfo } from './savedProjects'
+import { codeFilesOrNull } from '../core/validate'
 
 const storageKey = 'model-atlas-project-v2'
 const tr = (locale: Locale, en: string, zh: string) => locale === 'zh' ? zh : en
@@ -59,10 +60,15 @@ function initialProject(): SavedProject & { diagnostic: CodeDiagnostic | null; l
       if (saved && ['demo', 'catalog', 'import', 'code'].includes(saved.origin)) {
         const locale: Locale = saved.locale === 'en' ? 'en' : 'zh'
         if (saved.origin === 'code') {
-          const pristine = saved.builtInId && codeModelById[saved.builtInId] ? trace(saved.builtInId, codeModelById[saved.builtInId].files, null, metaFor(saved.builtInId)).model : null
-          const built = trace(saved.model?.id ?? saved.builtInId ?? 'my-model', saved.codeFiles, pristine, metaFor(saved.builtInId))
-          const projectKey = saved.projectKey ?? (saved.builtInId ? builtInProjectKey(saved.builtInId) : uniqueProjectKey(saved.model?.id ?? 'my-model'))
-          return { ...saved, locale, model: built.model, diagnostic: built.diagnostic, logs: built.logs, projectKey }
+          const codeFiles = codeFilesOrNull(saved.codeFiles)
+          if (!codeFiles) throw new Error('Saved project has no code files')
+          const builtInId = typeof saved.builtInId === 'string' ? saved.builtInId : null
+          const savedId = typeof saved.model?.id === 'string' ? saved.model.id : null
+          const pristine = builtInId && codeModelById[builtInId] ? trace(builtInId, codeModelById[builtInId].files, null, metaFor(builtInId)).model : null
+          const built = trace(savedId ?? builtInId ?? 'my-model', codeFiles, pristine, metaFor(builtInId))
+          const projectKey = typeof saved.projectKey === 'string' ? saved.projectKey : (builtInId ? builtInProjectKey(builtInId) : uniqueProjectKey(savedId ?? 'my-model'))
+          const projectName = typeof saved.projectName === 'string' ? saved.projectName : undefined
+          return { ...saved, builtInId, codeFiles, projectName, locale, model: built.model, diagnostic: built.diagnostic, logs: built.logs, projectKey }
         }
         const validated = importModel({ model: saved.model, codeFiles: saved.codeFiles })
         const current = studyById[validated.model.id]?.model

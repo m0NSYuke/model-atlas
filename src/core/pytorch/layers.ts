@@ -139,7 +139,9 @@ function normDefinition(kind: 'batch' | 'instance', dims: number): LayerDefiniti
         config: { num_features: features }, params, props: new Map<string, Value>([['num_features', features]]),
         forward: (inputs) => {
           const x = tensorArg(inputs[0], className)
-          const channelAxis = x.shape.length === dims + 1 ? 0 : 1
+          // Batch norm always has a batch axis, so BatchNorm1d takes (N, C) as well as (N, C, L);
+          // instance norm also accepts unbatched (C, ...) input.
+          const channelAxis = kind === 'batch' || x.shape.length !== dims + 1 ? 1 : 0
           if (x.shape[channelAxis] !== features) throw new PyError(`nn.${className}(${features}) received ${x.shape[channelAxis]} channels (input ${fmt(x.shape)})`)
           return new Tensor(x.shape)
         },
