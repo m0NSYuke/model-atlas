@@ -612,7 +612,7 @@ button.reference-link { border: 0; cursor: pointer; font-family: inherit; }
 .shortcut-hint { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 8px 0 12px; border-radius: 12px; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 500; }
 .shortcut-hint:hover { color: var(--text); }
 .journey + .shortcut-hint { margin-left: 0; }
-.gesture-hint { position: absolute; z-index: 6; left: 50%; bottom: 64px; transform: translateX(-50%); padding: 7px 14px; border-radius: 99px; font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.gesture-hint { position: absolute; z-index: 6; left: 50%; bottom: 64px; transform: translateX(-50%); width: max-content; max-width: min(720px, calc(100% - 140px)); padding: 7px 14px; border-radius: 14px; font-size: 11.5px; line-height: 1.45; text-align: center; color: var(--text-2); }
 
 @container (max-width: 760px) {
   .stage-header { padding: 10px 12px; gap: 6px; }
