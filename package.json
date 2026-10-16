@@ -1,0 +1,51 @@
+{
+  "name": "3d-model-atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "check:graphs": "node scripts/check-graphs.mjs",
+    "test:gestures": "node --experimental-strip-types --test tests/gestureMachine.test.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:study": "node --experimental-strip-types --test tests/study.test.mjs",
+    "test:training": "node --test tests/training.test.mjs",
+    "test:interpreter": "node --test tests/interpreter.test.mjs",
+    "test": "npm run test:interpreter && npm run test:training && npm run test:study && npm run test:gestures",
+    "verify:torch": "node scripts/verify-with-torch.mjs",
+    "trace": "node scripts/trace-file.mjs"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.17",
+    "@monaco-editor/react": "^4.7.0",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
+    "lucide-react": "^0.468.0",
+    "monaco-editor": "^0.56.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-resizable-panels": "^2.1.7",
+    "three": "^0.171.0",
+    "zustand": "^5.0.2"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.171.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

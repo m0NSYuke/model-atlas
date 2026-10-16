@@ -1,0 +1,154 @@
+{
+ "args_kwargs_closure": {
+  "total": 768,
+  "print": "torch.Size([3, 8])"
+ },
+ "control_flow": {
+  "total": 216,
+  "print": "torch.Size([2, 8])"
+ },
+ "conv_family": {
+  "total": 1660,
+  "print": "[torch.Size([2, 16, 50]), torch.Size([1, 8, 4, 8, 8]), torch.Size([1, 1])]"
+ },
+ "creation_ops": {
+  "total": 0,
+  "print": "torch.Size([5]) torch.Size([5]) torch.Size([2, 3]) torch.Size([4, 4]) torch.Size([4, 4]) torch.Size([3, 3]) torch.Size([2, 3]) torch.Size([3]) torch.Size([5]) torch.Size([3]) torch.Size([6]) torch.Size([5, 5])"
+ },
+ "creation_ops_inmod": {
+  "total": 2,
+  "print": "torch.Size([5]) torch.Size([5]) torch.Size([2, 3]) torch.Size([4, 4]) torch.Size([4, 4]) torch.Size([3, 3]) torch.Size([2, 3]) torch.Size([3]) torch.Size([5]) torch.Size([3]) torch.Size([6]) torch.Size([5, 5])"
+ },
+ "dataclass_property": {
+  "total": 16576,
+  "print": "torch.Size([2, 64])"
+ },
+ "dict_return_kwargs_forward": {
+  "total": 54,
+  "print": "{'cls': torch.Size([3, 4]), 'box': torch.Size([3, 2])}"
+ },
+ "einops_ops": {
+  "total": 3200,
+  "print": "[torch.Size([2, 64]), torch.Size([2, 4, 65, 16])]"
+ },
+ "einsum_matmul": {
+  "total": 0,
+  "print": "torch.Size([2, 4, 8, 8]) torch.Size([3, 4, 6]) torch.Size([4, 5]) torch.Size([2, 4, 8, 32]) torch.Size([3, 4, 2]) torch.Size([2, 4, 8, 8]) torch.Size([3, 4])"
+ },
+ "einsum_matmul_inmod": {
+  "total": 2,
+  "print": "torch.Size([2, 4, 8, 8]) torch.Size([3, 4, 6]) torch.Size([4, 5]) torch.Size([2, 4, 8, 32]) torch.Size([3, 4, 2]) torch.Size([2, 4, 8, 8]) torch.Size([3, 4])"
+ },
+ "embedding_variants": {
+  "total": 3408,
+  "print": "[torch.Size([2, 10, 16]), torch.Size([2, 16])]"
+ },
+ "fstr": {
+  "total": 20,
+  "print": "3 4 torch.Size([2, 4]) (2, 4)    3 a{b} q y.shape[0]=2"
+ },
+ "fstr_keys": {
+  "total": 432,
+  "print": ""
+ },
+ "full_transformer": {
+  "total": 42880,
+  "print": "torch.Size([2, 6, 32])"
+ },
+ "gnn_index_add": {
+  "total": 544,
+  "print": "torch.Size([5, 32])"
+ },
+ "gradient_checkpoint_jit": {
+  "total": 72,
+  "print": "torch.Size([2, 8])"
+ },
+ "inheritance_super": {
+  "total": 1120,
+  "print": "torch.Size([2, 5, 32])"
+ },
+ "init_apply": {
+  "total": 296,
+  "print": "296 torch.Size([1, 8])"
+ },
+ "masking_where": {
+  "total": 0,
+  "print": "torch.Size([2, 4, 6, 6])"
+ },
+ "masking_where_inmod": {
+  "total": 2,
+  "print": "torch.Size([2, 4, 6, 6])"
+ },
+ "mha_batchfirst": {
+  "total": 33280,
+  "print": "[torch.Size([2, 10, 64]), torch.Size([2, 10, 10])]"
+ },
+ "moe_router": {
+  "total": 16900,
+  "print": "torch.Size([10, 32])"
+ },
+ "norms_acts": {
+  "total": 33,
+  "print": "torch.Size([2, 4, 8])"
+ },
+ "reductions_index": {
+  "total": 0,
+  "print": "torch.Size([4]) torch.Size([4]) torch.Size([4, 3]) torch.Size([4]) torch.Size([4, 3]) torch.Size([4, 10]) torch.Size([4]) torch.Size([4, 3]) torch.Size([2, 3, 2]) torch.Size([1, 4, 1, 10]) torch.Size([4, 5])"
+ },
+ "reductions_index_inmod": {
+  "total": 2,
+  "print": "torch.Size([4]) torch.Size([4]) torch.Size([4, 3]) torch.Size([4]) torch.Size([4, 3]) torch.Size([4, 10]) torch.Size([4]) torch.Size([4, 3]) torch.Size([2, 3, 2]) torch.Size([1, 4, 1, 10]) torch.Size([4, 5])"
+ },
+ "reshape_ops": {
+  "total": 0,
+  "print": "torch.Size([2, 20, 3]) torch.Size([2, 5, 12]) torch.Size([2, 3, 8, 5]) torch.Size([2, 3, 4, 5]) torch.Size([2, 1, 4, 5]) torch.Size([2, 2, 4, 5]) torch.Size([2, 3, 4]) torch.Size([2, 3]) 5 120"
+ },
+ "reshape_ops_inmod": {
+  "total": 2,
+  "print": "torch.Size([2, 20, 3]) torch.Size([2, 5, 12]) torch.Size([2, 3, 8, 5]) torch.Size([2, 3, 4, 5]) torch.Size([2, 1, 4, 5]) torch.Size([2, 2, 4, 5]) torch.Size([2, 3, 4]) torch.Size([2, 3]) 5 120"
+ },
+ "resnet_bottleneck": {
+  "total": 1327400,
+  "print": "torch.Size([1, 1000])"
+ },
+ "rnn_family": {
+  "total": 47632,
+  "print": "[torch.Size([3, 8]), torch.Size([3, 64])]"
+ },
+ "rope_llama": {
+  "total": 49536,
+  "print": "torch.Size([2, 12, 64])"
+ },
+ "sdpa_interp_pad": {
+  "total": 0,
+  "print": "torch.Size([2, 4, 10, 16]) torch.Size([1, 3, 30, 30]) torch.Size([1, 3, 7, 9]) torch.Size([1, 3, 22, 18]) torch.Size([2, 4, 10, 16]) torch.Size([1, 3, 8, 8]) torch.Size([1, 3, 7, 7]) torch.Size([2, 4, 10, 16]) torch.Size([4, 5])"
+ },
+ "sdpa_interp_pad_inmod": {
+  "total": 2,
+  "print": "torch.Size([2, 4, 10, 16]) torch.Size([1, 3, 30, 30]) torch.Size([1, 3, 7, 9]) torch.Size([1, 3, 22, 18]) torch.Size([2, 4, 10, 16]) torch.Size([1, 3, 8, 8]) torch.Size([1, 3, 7, 7]) torch.Size([2, 4, 10, 16]) torch.Size([4, 5])"
+ },
+ "sequential_ordereddict": {
+  "total": 355,
+  "print": "torch.Size([2, 5])"
+ },
+ "string_format_print": {
+  "total": 0,
+  "print": "x shape: (2, 3)\nx 1.23    2 [2, 3] 'x' X a,b\n[('a', 1), ('b', 2)] [9, 6, 3, 0] 14 {0, 1, 2} 5 (3, 1) 3 1024 3 3.14 True True"
+ },
+ "transformer_layers": {
+  "total": 117184,
+  "print": "torch.Size([2, 7, 64])"
+ },
+ "vae_reparam_tuple_return": {
+  "total": 652824,
+  "print": "torch.Size([])"
+ },
+ "weight_tying_freeze": {
+  "total": 800,
+  "print": "torch.Size([2, 4, 50]) 800"
+ },
+ "with_nograd_decorators": {
+  "total": 20,
+  "print": "torch.Size([2, 4])"
+ }
+}

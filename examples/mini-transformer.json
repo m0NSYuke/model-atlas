@@ -1,0 +1,43 @@
+{
+  "id": "mini-transformer",
+  "name": "Mini Transformer",
+  "description": "An educational self-attention block with a residual path.",
+  "localized": {
+    "zh": { "name": "迷你 Transformer", "description": "带残差路径的教学用自注意力模块。" }
+  },
+  "nodes": [
+    {
+      "id": "tokens", "name": "Token embeddings", "type": "tensor",
+      "outputShape": ["B", 128, 16, 1, 1],
+      "description": "A sequence represented as token vectors.",
+      "learning": { "what": "Each token has a 128-dimensional feature vector." },
+      "localized": { "zh": { "name": "词元嵌入", "description": "表示为词元向量的序列。", "learning": { "what": "每个词元都有一个 128 维特征向量。" } } }
+    },
+    {
+      "id": "norm", "name": "LayerNorm", "type": "norm",
+      "inputShape": ["B", 128, 16, 1, 1], "outputShape": ["B", 128, 16, 1, 1],
+      "description": "Normalizes token features before attention.",
+      "localized": { "zh": { "name": "层归一化", "description": "在注意力计算前归一化词元特征。" } }
+    },
+    {
+      "id": "attention", "name": "Self Attention", "type": "attention",
+      "inputShape": ["B", 128, 16, 1, 1], "outputShape": ["B", 128, 16, 1, 1],
+      "parameters": { "embed_dim": 128, "num_heads": 4 },
+      "description": "Each token attends to the others in the sequence.",
+      "learning": { "why": "Attention mixes information across token positions." },
+      "localized": { "zh": { "name": "自注意力", "description": "每个词元关注序列中的其他词元。", "learning": { "why": "注意力让不同位置的词元交换信息。" } } }
+    },
+    {
+      "id": "residual", "name": "Residual Add", "type": "concat",
+      "inputShape": ["B", 128, 16, 1, 1], "outputShape": ["B", 128, 16, 1, 1],
+      "description": "Adds the attention output back to the input.",
+      "localized": { "zh": { "name": "残差相加", "description": "把注意力输出加回输入。" } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "tokens", "target": "norm" },
+    { "id": "e2", "source": "norm", "target": "attention" },
+    { "id": "e3", "source": "attention", "target": "residual" },
+    { "id": "e4", "source": "tokens", "target": "residual", "type": "residual" }
+  ]
+}

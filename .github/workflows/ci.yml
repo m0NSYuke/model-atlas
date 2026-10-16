@@ -1,0 +1,23 @@
+# Runs on every push and pull request: install, type check and build, tests, graph check.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check and build
+        run: npm run build
+      - name: Tests (interpreter, training, study, gestures)
+        run: npm test
+      - name: Graph check (ports, shapes, spacing)
+        run: npm run check:graphs

@@ -1,0 +1,25 @@
+# Architecture connection audit
+
+The built-in graphs are compact teaching diagrams. Solid arrows show data dependencies. Dashed links show conditioning, training supervision, reuse of learned weights, or feedback to the next sampling step. Repeated layers and internal projections are omitted. The editable 3D VAE's shapes describe the included demo implementation, not universal model dimensions.
+
+| Map | Primary figure or section | Connections represented |
+| --- | --- | --- |
+| 3D VAE | [CogVideoX, Figs. 2–3](https://arxiv.org/pdf/2408.06072); included demo code | Encoder features → posterior moments → mean/variance → reparameterized latent → decoder. Exact Conv3D and downsample stages come from the local example. |
+| π0 | [π0 paper](https://arxiv.org/abs/2410.24164) | Images and language form the VLM prefix; state, noisy actions and flow time condition the action expert; its vector field is integrated into actions. |
+| π0.5 | [π0.5, Fig. 3 and Sec. IV-A](https://arxiv.org/html/2504.16054v1) | Image, command and state form multimodal context; a semantic subtask is predicted first; the action expert then generates low-level actions by flow integration. Co-training is marked as training. |
+| π series | [π0](https://arxiv.org/abs/2410.24164), [π0.5](https://arxiv.org/abs/2504.16054), [π0.7 team report](https://www.pi.website/blog/pi07) | Chronology and capability overview, not an executable network. |
+| DDPM | [DDPM, forward and reverse processes](https://arxiv.org/abs/2006.11239) | Training constructs xₜ from x₀, ε and t, then compares predicted ε with ε. Sampling starts from new Gaussian noise and reuses the trained denoiser. |
+| DDIM | [DDIM, sampling update](https://arxiv.org/abs/2010.02502) | Current xₜ and predicted ε determine estimated x₀; selected time steps and η determine each jump. |
+| CFG | [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598) | The same denoiser evaluates xₜ with null and supplied conditions; predictions combine before a sampler step. |
+| Latent Diffusion + VAE | [LDM, Fig. 1 and Sec. 3](https://arxiv.org/abs/2112.10752) | Images are encoded for diffusion training; fresh latent noise starts generation; the sampler reuses the learned conditional U-Net and sends a clean latent to the decoder. |
+| Diffusion U-Net | [DDPM](https://arxiv.org/abs/2006.11239), [original U-Net, Fig. 1](https://arxiv.org/abs/1505.04597) | Encoder, bottleneck and decoder have matching-resolution skip links; timestep conditions denoising blocks. Depth is schematic. |
+| DiT | [DiT, Fig. 3 and Sec. 3.2](https://arxiv.org/html/2212.09748v2) | Noisy latent → patches + positions → repeated transformer blocks. One illustrated block has attention and MLP branches, each condition-modulated and added to its residual stream. |
+| Flow Matching | [Flow Matching for Generative Modeling](https://arxiv.org/abs/2210.02747) | Training samples a probability path and velocity target; inference starts from a fresh prior and repeatedly evaluates the learned vector field through an ODE solver. |
+| Video generation | [Open-Sora](https://arxiv.org/abs/2412.20404) | Autoencoder supplies clean training video latents; noising supplies denoiser inputs. Inference starts from fresh latent noise, uses the learned spatiotemporal backbone through a solver, then decodes frames. Text conditions the backbone. |
+| Causal video | [CausVid](https://arxiv.org/abs/2412.07772), [CogVideoX causal VAE](https://arxiv.org/pdf/2408.06072) | Past context and a causal mask condition the current block; the clean generated block is decoded and appended for the next block. This combines published concepts as a learning overview; it does not claim CausVid uses this exact VAE. |
+
+`ModelEdge.type` distinguishes data, branches, residuals, conditions, training links, reuse of a trained network, and feedback. Optional `ModelEdge.via` points route bypasses outside the primary data lane. Both survive JSON export and import.
+
+## Code models
+
+The editable code models (`src/data/models/code/*.py`) are traced from their Python source, so their graphs follow the code exactly rather than a hand-drawn figure. They are compact, runnable re-implementations of: MLP; LeNet-5 (LeCun et al., 1998); ResNet-18 for CIFAR ([He et al., 2015](https://arxiv.org/abs/1512.03385)); GPT in the style of [nanoGPT](https://github.com/karpathy/nanoGPT); Vision Transformer ([Dosovitskiy et al., 2020](https://arxiv.org/abs/2010.11929)); U-Net ([Ronneberger et al., 2015](https://arxiv.org/abs/1505.04597)); DiT with adaLN-Zero ([Peebles & Xie, 2022](https://arxiv.org/abs/2212.09748)); a convolutional VAE ([Kingma & Welling, 2013](https://arxiv.org/abs/1312.6114)); and a bidirectional LSTM classifier. Sizes are reduced so the graphs stay readable; parameter counts match PyTorch for the sizes in the code.

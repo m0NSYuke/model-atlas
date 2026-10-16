@@ -1,0 +1,7 @@
+{
+  "name": "Template · CNN + training loop",
+  "zhName": "导入模板 · CNN + 训练循环",
+  "description": "The fixed import template: model.py is required; data.py and train.py are optional. Delete train.py to see only the network.",
+  "zhDescription": "固定导入模板：model.py 必需，data.py 和 train.py 可选。删掉 train.py 就只看网络本身。",
+  "entry": "train.py"
+}

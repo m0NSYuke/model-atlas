@@ -1,0 +1,15 @@
+node_modules
+dist
+*.local
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# Local backups, internal working notes and design review scratch
+backup-*/
+design-review/
+internal-notes/
+
+# Screenshots at the project root (keep documentation images in docs/images/)
+/*.png
