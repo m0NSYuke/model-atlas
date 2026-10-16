@@ -73,7 +73,7 @@ export const palettes: Record<ResolvedTheme, Palette> = {
 
 /** The palette for the current theme; components re-render when the theme flips. */
 export function usePalette(): Palette {
-  return palettes[useUiStore((state) => state.resolved)]
+  return palettes[useUiStore((state) => state.resolved)] ?? palettes.dark
 }
 
 export const opSymbol: Partial<Record<string, string>> = {

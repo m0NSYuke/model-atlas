@@ -17,6 +17,13 @@ test('share links round-trip code, selection and notes', async () => {
   assert.equal(await decodeShare('zbroken'), null)
 })
 
+test('share links drop fields of the wrong type instead of saving them', async () => {
+  const token = await encodeShare({ v: 1, model: 'code-gpt', files: { 'model.py': 5, 'ok.py': 'x = 1' }, notes: { wte: { evil: 1 }, lm_head: 'head' }, view: 'side', depth: -1, selected: 7 })
+  assert.deepEqual(await decodeShare(token), { v: 1, model: 'code-gpt', files: { 'ok.py': 'x = 1' }, notes: { lm_head: 'head' }, selected: null })
+  assert.equal(await decodeShare(await encodeShare({ v: 1, model: 'code-gpt', files: ['x'] })).then((state) => state.files), undefined)
+  assert.equal(await decodeShare(await encodeShare([1, 2])), null)
+})
+
 test('model diff finds new blocks, reshapes and parameter changes', () => {
   const base = { id: 'm', name: 'm', totalParams: 10, nodes: [{ id: 'g', name: 'g', type: 'module' }, { id: 'a', name: 'a', type: 'linear', parentId: 'g', outputShape: [1, 4], paramCount: 10 }], edges: [] }
   const next = { id: 'm', name: 'm', totalParams: 30, nodes: [{ id: 'g', name: 'g', type: 'module' }, { id: 'a', name: 'a', type: 'linear', parentId: 'g', outputShape: [1, 8], paramCount: 20 }, { id: 'b', name: 'b', type: 'linear', outputShape: [1, 8], paramCount: 10 }], edges: [] }

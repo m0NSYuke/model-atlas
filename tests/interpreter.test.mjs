@@ -46,6 +46,18 @@ if __name__ == "__main__":
   assert.equal(model.totalParams, 6 * (8 * 8 + 8))
 })
 
+test('BatchNorm1d takes (N, C) input as well as (N, C, L)', () => {
+  // PyTorch: batch norm's channel axis is always 1; weight and bias are [C].
+  const { model, diagnostic } = build(`${header}
+net = nn.Sequential(nn.Linear(8, 16), nn.BatchNorm1d(16), nn.ReLU())
+y = net(torch.randn(4, 8))
+z = nn.BatchNorm1d(16)(torch.randn(4, 16, 10))
+print(y.shape, z.shape)
+`)
+  assert.equal(diagnostic, undefined)
+  assert.equal(model.totalParams, 8 * 16 + 16 + 2 * 16)
+})
+
 test('a file without a model is drawn as a script of tensor operations', () => {
   const { model, logs } = build(`${header}
 x = torch.randn(2, 3)
