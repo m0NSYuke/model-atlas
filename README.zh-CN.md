@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/brand/hero-zh.jpg" alt="Model Atlas：写下 PyTorch，立刻看见 3D 架构" width="100%"></p>
+
 # Model Atlas · 3D 模型架构实验室
 
 [English](README.md) | **简体中文**

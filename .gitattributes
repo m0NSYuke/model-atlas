@@ -5,4 +5,5 @@
 *.wasm binary
 *.task binary
 *.gif binary
+*.jpg binary
 *.mp4 binary

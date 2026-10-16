@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/brand/hero-en.jpg" alt="Model Atlas: write PyTorch, see it in 3D" width="100%"></p>
+
 # Model Atlas · 3D model architecture lab
 
 **English** | [简体中文](README.zh-CN.md)
