@@ -255,17 +255,17 @@ export function CodeWorkspace({ onCollapse, collapseIcon }: { onCollapse?: () =>
 
   const files = Object.keys(codeFiles)
   const isCode = modelOrigin === 'code'
-  const hint = isCode ? tr(locale, 'Edit the PyTorch code — the 3D graph is rebuilt from it as you type', '修改 PyTorch 代码，3D 结构会随输入自动重建') : t(locale, modelOrigin === 'demo' ? 'codeHint' : modelOrigin === 'catalog' ? 'catalogCodeHint' : 'importedCodeHint')
+  const hint = isCode ? tr(locale, 'Edit the PyTorch code — the 3D graph is rebuilt from it as you type', '修改 PyTorch 代码，3D 结构会随输入自动重建') : t(locale, modelOrigin === 'demo' ? 'codeHint' : modelOrigin === 'catalog' ? 'catalogCodeHint' : files.length ? 'importedCodeHint' : 'importedIrHint')
 
   return <section className="panel code-panel">
     <div className="code-tabs">
       <div className="code-tab-scroll">
-      {files.map((file) => <button type="button" className={`code-tab ${tab === 'code' && activeFile === file ? 'active' : ''}`} onClick={() => { setTab('code'); setActiveFile(file) }} key={file}><FileCode2 size={13} />{file}</button>)}
-      <button type="button" className={`code-tab ${tab === 'code' && isIR ? 'active' : ''}`} onClick={() => { setTab('code'); setActiveFile(IR) }}><Braces size={13} />{t(locale, 'irTab')}</button>
-      {isCode && <button type="button" className={`code-tab ${tab === 'summary' ? 'active' : ''}`} onClick={() => setTab('summary')}><Table2 size={13} />{tr(locale, 'Summary', '参数表')}</button>}
+      {files.map((file) => <button type="button" className={`code-tab ${tab === 'code' && activeFile === file ? 'active' : ''}`} onClick={() => { setTab('code'); setActiveFile(file) }} key={file} title={file}><FileCode2 size={13} /><span>{file}</span></button>)}
+      <button type="button" className={`code-tab ${tab === 'code' && isIR ? 'active' : ''}`} onClick={() => { setTab('code'); setActiveFile(IR) }} title={t(locale, 'irTab')}><Braces size={13} /><span>{t(locale, 'irTab')}</span></button>
+      {isCode && <button type="button" className={`code-tab ${tab === 'summary' ? 'active' : ''}`} onClick={() => setTab('summary')} title={tr(locale, 'Summary', '参数表')}><Table2 size={13} /><span>{tr(locale, 'Summary', '参数表')}</span></button>}
       </div>
       <span className="code-tabs-spacer" />
-      {(isCode || modelOrigin === 'demo') && <button type="button" className="code-reset" disabled={pristine && modelOrigin === 'code'} onClick={() => { if (modelOrigin !== 'code' || window.confirm(tr(locale, 'Restore the original code? Your edits to this model will be discarded.', '恢复原始代码吗？你对这个模型的修改会被丢弃。'))) resetCode() }} title={tr(locale, 'Restore the original code', '恢复原始代码')}><RotateCcw size={13} />{tr(locale, 'Reset', '重置')}</button>}
+      {(isCode || modelOrigin === 'demo') && <button type="button" className="code-reset" disabled={pristine && modelOrigin === 'code'} onClick={() => { if (modelOrigin !== 'code' || window.confirm(tr(locale, 'Restore the original code? Your edits to this model will be discarded.', '恢复原始代码吗？你对这个模型的修改会被丢弃。'))) resetCode() }} title={tr(locale, 'Restore the original code', '恢复原始代码')} aria-label={tr(locale, 'Reset', '重置')}><RotateCcw size={13} /><span>{tr(locale, 'Reset', '重置')}</span></button>}
       {onCollapse && <button type="button" className="icon-button small" onClick={onCollapse} data-tip={tr(locale, 'Hide code  [', '收起代码栏  [')} data-tip-side="left" aria-label={tr(locale, 'Hide code', '收起代码栏')}>{collapseIcon}</button>}
     </div>
 

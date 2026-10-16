@@ -6,6 +6,7 @@ import { AlertTriangle, Box, Camera, ShieldCheck, ChevronDown, Focus, Keyboard, 
 import { effectiveDepth, useModelStore } from '../../store/modelStore'
 import { useUiStore } from '../../store/uiStore'
 import { localizedModel, localizedNode, t, typeName } from '../../i18n/translations'
+import { localizeDiagnostic } from '../../i18n/diagnostics'
 import { codeModelById } from '../../data/models/codeCatalog'
 import { useHandTracking } from '../../gestures/useHandTracking'
 import { GestureSceneInput } from '../three/GestureSceneInput'
@@ -117,7 +118,10 @@ function SceneContents({ graph, path, modelId, labels, trace, flow, fitRequest, 
   </>
 }
 
-function HoverCard({ graph }: { graph: ViewGraph }) {
+/** Room kept for the hover card when deciding which side of the pointer it goes on (its max-width plus offset). */
+const hoverCardRoom = { width: 310, height: 170 }
+
+function HoverCard({ graph, stage }: { graph: ViewGraph; stage: React.RefObject<HTMLElement> }) {
   const hovered = useModelStore((state) => state.hoveredNodeId)
   const locale = useModelStore((state) => state.locale)
   const model = useModelStore((state) => state.modelIR)
@@ -130,10 +134,19 @@ function HoverCard({ graph }: { graph: ViewGraph }) {
   }, [])
   const item = hovered ? graph.byId.get(hovered) ?? null : null
   const node = item?.node ?? (hovered ? model.nodes.find((entry) => entry.id === hovered) : undefined)
-  if (!node || !point) return null
+  const bounds = stage.current?.getBoundingClientRect()
+  if (!node || !point || !bounds) return null
   const name = localizedNode(node, locale, model.id).name
-  const flip = point.x > window.innerWidth - 300
-  return <div className="hover-card" style={{ left: flip ? point.x - 16 : point.x + 16, top: point.y + 14, transform: flip ? 'translateX(-100%)' : undefined, ['--accent' as string]: types[node.type] }}>
+  // Placed inside the stage, on whichever side of the pointer has room: hovering a row in the model tree puts it at the stage's edge.
+  const x = point.x - bounds.left
+  const y = point.y - bounds.top
+  const flipX = x + hoverCardRoom.width > bounds.width
+  const flipY = y + hoverCardRoom.height > bounds.height
+  const place = {
+    left: flipX ? undefined : Math.max(8, x + 16), right: flipX ? Math.max(8, bounds.width - x + 16) : undefined,
+    top: flipY ? undefined : Math.max(8, y + 14), bottom: flipY ? Math.max(8, bounds.height - y + 10) : undefined,
+  }
+  return <div className="hover-card" style={{ ...place, ['--accent' as string]: types[node.type] }}>
     <div className="hover-card-head"><i />{typeName(locale, node.type)}{node.className && <code>{node.className}</code>}</div>
     <strong>{name}</strong>
     {(node.inputShape || node.outputShape) && <div className="hover-card-shapes">
@@ -236,6 +249,7 @@ function ToolButton({ tip, pressed, onClick, children, disabled }: { tip: string
 export function ModelScene() {
   const hand = useHandTracking()
   const controls = useRef<OrbitControlsImpl>(null)
+  const stage = useRef<HTMLElement>(null)
   const mousePauseUntil = useRef(0)
   const graph = useViewGraph()
   const model = useModelStore((state) => state.modelIR)
@@ -296,7 +310,7 @@ export function ModelScene() {
   const handOn = hand.status !== 'off' && hand.status !== 'error'
   const labelText = { smart: tr(locale, 'Smart labels', '智能标签'), all: tr(locale, 'All labels', '全部标签'), none: tr(locale, 'No labels', '隐藏标签') }
 
-  return <section className={`stage ${view === '2d' ? 'stage-2d' : ''}`}>
+  return <section ref={stage} className={`stage ${view === '2d' ? 'stage-2d' : ''}`}>
     <div className="stage-backdrop" aria-hidden="true" />
     <div className="canvas-wrap" onPointerDownCapture={() => { mousePauseUntil.current = Infinity }} onWheelCapture={() => { mousePauseUntil.current = performance.now() + 1000 }}
       onPointerLeave={() => useModelStore.getState().hoverNode(null)}>
@@ -310,8 +324,8 @@ export function ModelScene() {
 
     <div className="stage-toolbar glass">
       <div className="segmented" role="group" aria-label={tr(locale, 'View', '视图')}>
-        <button type="button" aria-pressed={view === '3d'} onClick={() => ui().setView('3d')}><Box size={14} /><span className="seg-label">3D</span></button>
-        <button type="button" aria-pressed={view === '2d'} onClick={() => { hand.stop(); ui().setView('2d') }}><Waypoints size={14} /><span className="seg-label">{tr(locale, 'Diagram', '结构图')}</span></button>
+        <button type="button" aria-pressed={view === '3d'} aria-label={tr(locale, '3D view', '3D 视图')} onClick={() => ui().setView('3d')}><Box size={14} /><span className="seg-label">3D</span></button>
+        <button type="button" aria-pressed={view === '2d'} aria-label={tr(locale, 'Flat diagram', '平面结构图')} onClick={() => { hand.stop(); ui().setView('2d') }}><Waypoints size={14} /><span className="seg-label">{tr(locale, 'Diagram', '结构图')}</span></button>
       </div>
       {isCode && <div className="depth-control" data-tip={tr(locale, 'Levels of nested modules shown', '展开的嵌套层级')}>
         <Layers size={14} />
@@ -336,7 +350,7 @@ export function ModelScene() {
     <div className="stage-notices">
       {diagnostic && <div className="error-banner" role="alert">
         <AlertTriangle size={16} />
-        <div><strong>{tr(locale, 'The code no longer runs — showing the last working graph', '代码当前无法运行，下方保留的是上一次成功的结构')}</strong><span>{diagnostic.message}</span></div>
+        <div><strong>{tr(locale, 'The code no longer runs — showing the last working graph', '代码当前无法运行，下方保留的是上一次成功的结构')}</strong><span title={diagnostic.message}>{localizeDiagnostic(diagnostic.message, locale)}</span></div>
         {diagnostic.line && <button type="button" onClick={() => { ui().togglePanel('codeOpen', true); openSource(diagnostic.file ?? Object.keys(useModelStore.getState().codeFiles)[0], diagnostic.line!) }}>{tr(locale, `Line ${diagnostic.line}`, `第 ${diagnostic.line} 行`)}</button>}
       </div>}
       {toast && !diagnostic && <div className="change-toast glass"><Sparkles size={14} />{toast}</div>}
@@ -379,6 +393,6 @@ export function ModelScene() {
     {view === '3d' && hand.uiIntent && <div className={`gesture-cursor ${hand.uiIntent.pinched ? 'pinched' : hand.uiIntent.pointing ? 'pointing' : ''}`} style={{ left: `${hand.uiIntent.x * 100}%`, top: `${hand.uiIntent.y * 100}%` }}><span /></div>}
     {view === '3d' && hand.status === 'error' && <div className="gesture-error"><span>{t(locale, `gestureError_${hand.error ?? 'unknown'}`)}{hand.error === 'model' && hand.errorDetail && <small>{hand.errorDetail}</small>}</span><button type="button" onClick={() => hand.stop()}><X size={14} /></button></div>}
     {view === '3d' && hand.status === 'tracking' && <div className="gesture-hint glass">{t(locale, 'gestureHint')}</div>}
-    <HoverCard graph={graph} />
+    <HoverCard graph={graph} stage={stage} />
   </section>
 }
