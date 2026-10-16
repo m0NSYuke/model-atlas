@@ -35,7 +35,7 @@ export type Stmt =
   | { kind: 'return'; value?: Expr; line: number; endLine: number }
   | { kind: 'if'; test: Expr; body: Stmt[]; orelse: Stmt[]; line: number; endLine: number }
   | { kind: 'for'; target: Expr; iter: Expr; body: Stmt[]; orelse: Stmt[]; line: number; endLine: number }
-  | { kind: 'while'; test: Expr; body: Stmt[]; line: number; endLine: number }
+  | { kind: 'while'; test: Expr; body: Stmt[]; orelse: Stmt[]; line: number; endLine: number }
   | { kind: 'with'; items: { value: Expr; target?: Expr }[]; body: Stmt[]; line: number; endLine: number }
   | { kind: 'try'; body: Stmt[]; handlers: Stmt[][]; orelse: Stmt[]; finalbody: Stmt[]; line: number; endLine: number }
   | { kind: 'def'; name: string; params: Param[]; body: Stmt[]; decorators: Expr[]; docstring?: string; line: number; endLine: number }
@@ -43,7 +43,9 @@ export type Stmt =
   | { kind: 'raise'; value?: Expr; line: number; endLine: number }
   | { kind: 'assert'; test: Expr; message?: Expr; line: number; endLine: number }
   | { kind: 'import'; names: ImportName[]; line: number; endLine: number }
-  | { kind: 'pass' | 'break' | 'continue' | 'global' | 'del'; line: number; endLine: number }
+  | { kind: 'global' | 'nonlocal'; names: string[]; line: number; endLine: number }
+  | { kind: 'del'; targets: Expr[]; line: number; endLine: number }
+  | { kind: 'pass' | 'break' | 'continue'; line: number; endLine: number }
 
 /** A literal piece or a `{expr!conversion:spec}` field of an f-string; `debug` holds the `expr=` text. */
 export type FStringPart = string | { expr: Expr; conversion?: 'r' | 's' | 'a'; spec?: FStringPart[]; debug?: string }
@@ -144,8 +146,9 @@ export class Parser {
           this.position++
           const test = this.test()
           const body = this.block()
-          if (this.isName('else')) { this.position++; this.block() }
-          return [{ kind: 'while', test, body, line: token.line, endLine: this.previousLine() }]
+          let orelse: Stmt[] = []
+          if (this.isName('else')) { this.position++; orelse = this.block() }
+          return [{ kind: 'while', test, body, orelse, line: token.line, endLine: this.previousLine() }]
         }
         case 'with': {
           this.position++
@@ -240,15 +243,6 @@ export class Parser {
     return statements
   }
 
-  private skipLine(): void {
-    let depth = 0
-    while (this.token.kind !== 'eof' && !(depth === 0 && (this.token.kind === 'newline' || this.isOp(';')))) {
-      if (this.isOp('(') || this.isOp('[') || this.isOp('{')) depth++
-      if (this.isOp(')') || this.isOp(']') || this.isOp('}')) depth--
-      this.position++
-    }
-  }
-
   private smallStatement(): Stmt {
     const token = this.token
     const line = token.line
@@ -257,8 +251,18 @@ export class Parser {
       switch (token.value) {
         case 'pass': case 'break': case 'continue': this.position++; return { kind: token.value, line, endLine: line }
         case 'import': case 'from': return { kind: 'import', names: this.importNames(), line, endLine: end() }
-        case 'global': case 'nonlocal': this.skipLine(); return { kind: 'global', line, endLine: end() }
-        case 'del': this.skipLine(); return { kind: 'del', line, endLine: end() }
+        case 'global': case 'nonlocal': {
+          this.position++
+          const names = [this.expectName()]
+          while (this.accept(',')) names.push(this.expectName())
+          return { kind: token.value, names, line, endLine: end() }
+        }
+        case 'del': {
+          this.position++
+          const targets = [this.target()]
+          while (this.accept(',') && this.token.kind !== 'newline' && this.token.kind !== 'eof' && !this.isOp(';')) targets.push(this.target())
+          return { kind: 'del', targets, line, endLine: end() }
+        }
         case 'return': {
           this.position++
           const value = this.token.kind === 'newline' || this.isOp(';') || this.token.kind === 'eof' ? undefined : this.testList(true)
@@ -609,7 +613,7 @@ export class Parser {
     if (token.kind === 'number') {
       this.position++
       const text = token.value
-      const value = /^0[xX]/.test(text) ? parseInt(text, 16) : /^0[bB]/.test(text) ? parseInt(text.slice(2), 2) : Number(text.replace(/j$/, ''))
+      const value = /^0[xX]/.test(text) ? parseInt(text, 16) : /^0[bB]/.test(text) ? parseInt(text.slice(2), 2) : /^0[oO]/.test(text) ? parseInt(text.slice(2), 8) : Number(text.replace(/j$/, ''))
       return { kind: 'const', value, line }
     }
     if (token.kind === 'string') {

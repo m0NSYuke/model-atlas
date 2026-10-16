@@ -1,6 +1,6 @@
 // Shape and parameter rules for torch.nn layers supported by the Atlas tracer.
 import type { ModelNodeType } from '../model-ir/types'
-import { broadcast, convAxis, flatten, fmt, normalizeDim, transposedConvAxis } from './shapes'
+import { broadcast, convAxis, flatten, fmt, normalizeDim, poolAxis, reshape, transposedConvAxis } from './shapes'
 import { PyDict, PyError, PyList, PyTuple, Tensor, formatValue, type LayerConfig, type Value } from './values'
 
 const REQUIRED = Symbol('required')
@@ -108,11 +108,14 @@ function transposedConvDefinition(dims: number): LayerDefinition {
       const padding = nTuple(a.padding, dims, 'padding')
       const outputPadding = nTuple(a.output_padding, dims, 'output_padding')
       const dilation = nTuple(a.dilation, dims, 'dilation')
-      const params = new Map([['weight', param(inChannels, outChannels, ...kernel)]])
+      const groups = toInt(a.groups, 'groups')
+      if (inChannels % groups || outChannels % groups) throw new PyError(`groups=${groups} must divide in_channels=${inChannels} and out_channels=${outChannels}`)
+      // The transposed weight is [in, out / groups, *kernel].
+      const params = new Map([['weight', param(inChannels, outChannels / groups, ...kernel)]])
       if (a.bias) params.set('bias', param(outChannels))
       const show = (values: number[]) => values.every((value) => value === values[0]) ? values[0] : values
       return {
-        config: { in_channels: inChannels, out_channels: outChannels, kernel_size: show(kernel), stride: show(stride), padding: show(padding) },
+        config: { in_channels: inChannels, out_channels: outChannels, kernel_size: show(kernel), stride: show(stride), padding: show(padding), ...(groups > 1 ? { groups } : {}), ...(dilation.some((d) => d > 1) ? { dilation: show(dilation) } : {}) },
         params,
         props: new Map<string, Value>([['in_channels', inChannels], ['out_channels', outChannels]]),
         forward: (inputs) => {
@@ -158,30 +161,43 @@ function poolDefinition(kind: 'max' | 'avg', dims: number): LayerDefinition {
       const kernel = nTuple(a.kernel_size, dims, 'kernel_size')
       const stride = a.stride === null ? kernel : nTuple(a.stride, dims, 'stride')
       const padding = nTuple(a.padding, dims, 'padding')
+      const dilation = kind === 'max' ? nTuple(a.dilation, dims, 'dilation') : Array(dims).fill(1)
+      const ceilMode = Boolean(a.ceil_mode)
       return {
-        config: { kernel_size: kernel[0], stride: stride[0], ...(padding[0] ? { padding: padding[0] } : {}) }, params: new Map(), props: new Map(),
+        config: { kernel_size: kernel[0], stride: stride[0], ...(padding[0] ? { padding: padding[0] } : {}), ...(dilation[0] > 1 ? { dilation: dilation[0] } : {}), ...(ceilMode ? { ceil_mode: true } : {}) }, params: new Map(), props: new Map(),
         forward: (inputs) => {
           const x = tensorArg(inputs[0], className)
           if (x.shape.length < dims + 1) throw new PyError(`nn.${className} expects at least ${dims + 1} dimensions, got ${fmt(x.shape)}`)
           const lead = x.shape.slice(0, x.shape.length - dims)
-          return new Tensor([...lead, ...x.shape.slice(-dims).map((size, index) => convAxis(size, kernel[index], stride[index], padding[index]))])
+          const output = new Tensor([...lead, ...x.shape.slice(-dims).map((size, index) => poolAxis(size, kernel[index], stride[index], padding[index], dilation[index], ceilMode))])
+          return a.return_indices ? new PyTuple([output, new Tensor(output.shape, null, 'long')]) : output
         },
       }
     },
   }
 }
 
-function adaptivePoolDefinition(dims: number): LayerDefinition {
+/** Adaptive pooling output_size: an int or a tuple whose None entries keep that input size. */
+export function adaptiveSize(value: Value, dims: number): (number | null)[] {
+  if (value instanceof PyTuple || value instanceof PyList) {
+    if (value.items.length !== dims) throw new PyError(`output_size needs ${dims} values, got ${value.items.length}`)
+    return value.items.map((item, index) => item === null ? null : toInt(item, `output_size[${index}]`))
+  }
+  return value === null ? Array(dims).fill(null) : Array(dims).fill(toInt(value, 'output_size'))
+}
+
+function adaptivePoolDefinition(kind: 'max' | 'avg', dims: number): LayerDefinition {
   return {
     type: 'pool',
-    signature: [['output_size', REQUIRED], ['return_indices', false]],
+    signature: kind === 'max' ? [['output_size', REQUIRED], ['return_indices', false]] : [['output_size', REQUIRED]],
     build: (a, className) => {
-      const size = a.output_size === null ? null : nTuple(a.output_size, dims, 'output_size')
+      const size = adaptiveSize(a.output_size, dims)
       return {
-        config: { output_size: size ? (size.every((item) => item === size[0]) ? size[0] : size) : 'None' }, params: new Map(), props: new Map(),
+        config: { output_size: size.every((item) => item === size[0]) ? size[0] ?? 'None' : size.includes(null) ? formatValue(a.output_size) : size as number[] }, params: new Map(), props: new Map(),
         forward: (inputs) => {
           const x = tensorArg(inputs[0], className)
-          return new Tensor([...x.shape.slice(0, x.shape.length - dims), ...x.shape.slice(-dims).map((value, index) => size?.[index] ?? value)])
+          const output = new Tensor([...x.shape.slice(0, x.shape.length - dims), ...x.shape.slice(-dims).map((value, index) => size[index] ?? value)])
+          return a.return_indices ? new PyTuple([output, new Tensor(output.shape, null, 'long')]) : output
         },
       }
     },
@@ -202,26 +218,32 @@ function recurrentDefinition(gates: number): LayerDefinition {
       const hidden = toInt(a.hidden_size, 'hidden_size')
       const layers = toInt(a.num_layers, 'num_layers')
       const directions = a.bidirectional ? 2 : 1
+      const proj = toInt(a.proj_size, 'proj_size')
+      if (proj && gates !== 4) throw new PyError(`proj_size is only supported for nn.LSTM, not nn.${className}`)
+      if (proj < 0 || (proj && proj >= hidden)) throw new PyError(`proj_size=${proj} must be between 0 and hidden_size=${hidden} (exclusive)`)
+      // With proj_size the hidden state h is projected down to proj_size (weight_hr), so it is what the next layer sees.
+      const h = proj || hidden
       const params = new Map<string, Tensor>()
       for (let layer = 0; layer < layers; layer++) {
         for (let direction = 0; direction < directions; direction++) {
           const suffix = `l${layer}${direction ? '_reverse' : ''}`
-          const layerInput = layer === 0 ? input : hidden * directions
+          const layerInput = layer === 0 ? input : h * directions
           params.set(`weight_ih_${suffix}`, param(gates * hidden, layerInput))
-          params.set(`weight_hh_${suffix}`, param(gates * hidden, hidden))
+          params.set(`weight_hh_${suffix}`, param(gates * hidden, h))
           if (a.bias) { params.set(`bias_ih_${suffix}`, param(gates * hidden)); params.set(`bias_hh_${suffix}`, param(gates * hidden)) }
+          if (proj) params.set(`weight_hr_${suffix}`, param(proj, hidden))
         }
       }
       return {
-        config: { input_size: input, hidden_size: hidden, num_layers: layers, batch_first: Boolean(a.batch_first), bidirectional: Boolean(a.bidirectional) },
+        config: { input_size: input, hidden_size: hidden, num_layers: layers, batch_first: Boolean(a.batch_first), bidirectional: Boolean(a.bidirectional), ...(proj ? { proj_size: proj } : {}) },
         params, props: new Map<string, Value>([['hidden_size', hidden], ['input_size', input]]),
         forward: (inputs) => {
           const x = tensorArg(inputs[0], className)
           if (x.shape[x.shape.length - 1] !== input) throw new PyError(`nn.${className}(input_size=${input}) received features of size ${x.shape[x.shape.length - 1]}`)
-          const output = new Tensor([...x.shape.slice(0, -1), hidden * directions])
+          const output = new Tensor([...x.shape.slice(0, -1), h * directions])
           const batch = x.shape.length === 3 ? [a.batch_first ? x.shape[0] : x.shape[1]] : []
-          const state = new Tensor([layers * directions, ...batch, hidden])
-          return new PyTuple([output, gates === 4 ? new PyTuple([state, new Tensor(state.shape)]) : state])
+          const state = new Tensor([layers * directions, ...batch, h])
+          return new PyTuple([output, gates === 4 ? new PyTuple([state, new Tensor([layers * directions, ...batch, hidden])]) : state])
         },
       }
     },
@@ -431,8 +453,8 @@ const definitions: Record<string, LayerDefinition> = {
   },
   MaxPool1d: poolDefinition('max', 1), MaxPool2d: poolDefinition('max', 2), MaxPool3d: poolDefinition('max', 3),
   AvgPool1d: poolDefinition('avg', 1), AvgPool2d: poolDefinition('avg', 2), AvgPool3d: poolDefinition('avg', 3),
-  AdaptiveAvgPool1d: adaptivePoolDefinition(1), AdaptiveAvgPool2d: adaptivePoolDefinition(2), AdaptiveAvgPool3d: adaptivePoolDefinition(3),
-  AdaptiveMaxPool1d: adaptivePoolDefinition(1), AdaptiveMaxPool2d: adaptivePoolDefinition(2),
+  AdaptiveAvgPool1d: adaptivePoolDefinition('avg', 1), AdaptiveAvgPool2d: adaptivePoolDefinition('avg', 2), AdaptiveAvgPool3d: adaptivePoolDefinition('avg', 3),
+  AdaptiveMaxPool1d: adaptivePoolDefinition('max', 1), AdaptiveMaxPool2d: adaptivePoolDefinition('max', 2),
   Flatten: {
     type: 'reshape', signature: [['start_dim', 1], ['end_dim', -1]],
     build: (a, className) => ({
@@ -449,8 +471,10 @@ const definitions: Record<string, LayerDefinition> = {
         forward: (inputs) => {
           const x = tensorArg(inputs[0], className)
           const dim = normalizeDim(toInt(a.dim, 'dim'), x.shape.length)
-          if (sizes.reduce((p, s) => p * s, 1) !== x.shape[dim]) throw new PyError(`nn.Unflatten: ${sizes.join('×')} does not equal dimension size ${x.shape[dim]}`)
-          return new Tensor([...x.shape.slice(0, dim), ...sizes, ...x.shape.slice(dim + 1)])
+          // One size may be -1 and is inferred, as in view().
+          let resolved: number[]
+          try { resolved = reshape([x.shape[dim]], sizes) } catch { throw new PyError(`nn.Unflatten: ${sizes.join('×')} does not equal dimension size ${x.shape[dim]}`) }
+          return new Tensor([...x.shape.slice(0, dim), ...resolved, ...x.shape.slice(dim + 1)])
         },
       }
     },
@@ -487,20 +511,37 @@ const definitions: Record<string, LayerDefinition> = {
       const e = toInt(a.embed_dim, 'embed_dim')
       const heads = toInt(a.num_heads, 'num_heads')
       if (e % heads) throw new PyError(`embed_dim=${e} must be divisible by num_heads=${heads}`)
-      const params = new Map([['in_proj_weight', param(3 * e, e)], ['out_proj.weight', param(e, e)]])
-      if (a.bias) { params.set('in_proj_bias', param(3 * e)); params.set('out_proj.bias', param(e)) }
+      const kdim = a.kdim === null ? e : toInt(a.kdim, 'kdim')
+      const vdim = a.vdim === null ? e : toInt(a.vdim, 'vdim')
+      const params = new Map<string, Tensor>()
+      // Keys or values of another width get separate q/k/v projections instead of one packed in_proj_weight.
+      if (kdim === e && vdim === e) params.set('in_proj_weight', param(3 * e, e))
+      else { params.set('q_proj_weight', param(e, e)); params.set('k_proj_weight', param(e, kdim)); params.set('v_proj_weight', param(e, vdim)) }
+      if (a.bias) params.set('in_proj_bias', param(3 * e))
+      if (a.add_bias_kv) { params.set('bias_k', param(1, 1, e)); params.set('bias_v', param(1, 1, e)) }
+      params.set('out_proj.weight', param(e, e))
+      if (a.bias) params.set('out_proj.bias', param(e))
+      // bias_k/bias_v and add_zero_attn each append one key position.
+      const extraKeys = (a.add_bias_kv ? 1 : 0) + (a.add_zero_attn ? 1 : 0)
       const batchFirst = Boolean(a.batch_first)
       return {
-        config: { embed_dim: e, num_heads: heads, head_dim: e / heads, batch_first: batchFirst }, params, props: new Map<string, Value>([['embed_dim', e], ['num_heads', heads]]),
+        config: { embed_dim: e, num_heads: heads, head_dim: e / heads, batch_first: batchFirst, ...(kdim !== e ? { kdim } : {}), ...(vdim !== e ? { vdim } : {}) }, params, props: new Map<string, Value>([['embed_dim', e], ['num_heads', heads]]),
         forward: (inputs, kwargs) => {
           const query = tensorArg(inputs[0] ?? kwargs.get('query'), className)
           const key = tensorArg(inputs[1] ?? kwargs.get('key') ?? query, className)
+          const value = tensorArg(inputs[2] ?? kwargs.get('value') ?? key, className)
           if (query.shape[query.shape.length - 1] !== e) throw new PyError(`nn.MultiheadAttention(embed_dim=${e}) received features of size ${query.shape[query.shape.length - 1]}`)
+          if (key.shape[key.shape.length - 1] !== kdim) throw new PyError(`nn.MultiheadAttention(kdim=${kdim}) received keys of size ${key.shape[key.shape.length - 1]}`)
+          if (value.shape[value.shape.length - 1] !== vdim) throw new PyError(`nn.MultiheadAttention(vdim=${vdim}) received values of size ${value.shape[value.shape.length - 1]}`)
           const batched = query.shape.length === 3
           const l = batched ? query.shape[batchFirst ? 1 : 0] : query.shape[0]
-          const s = batched ? key.shape[batchFirst ? 1 : 0] : key.shape[0]
+          const s = (batched ? key.shape[batchFirst ? 1 : 0] : key.shape[0]) + extraKeys
           const n = batched ? query.shape[batchFirst ? 0 : 1] : 1
-          return new PyTuple([new Tensor(query.shape), new Tensor(batched ? [n, l, s] : [l, s])])
+          const output = new Tensor(query.shape)
+          // forward(query, key, value, key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal)
+          if (!(inputs[4] ?? kwargs.get('need_weights') ?? true)) return new PyTuple([output, null])
+          const perHead = !(inputs[6] ?? kwargs.get('average_attn_weights') ?? true)
+          return new PyTuple([output, new Tensor([...(batched ? [n] : []), ...(perHead ? [heads] : []), l, s])])
         },
       }
     },

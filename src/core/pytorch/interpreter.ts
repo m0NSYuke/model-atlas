@@ -3,7 +3,7 @@
 import type { ModelEdge, ModelNodeType } from '../model-ir/types'
 import { PySyntaxError } from './lexer'
 import { parsePython, type Expr, type Param, type Stmt } from './parser'
-import { createLayer, interpolateShape, isLayer, layerType, lossShape, nTuple, supportedLayers, toInt, toInts, toNumber } from './layers'
+import { adaptiveSize, createLayer, interpolateShape, isLayer, layerType, lossShape, nTuple, supportedLayers, toInt, toInts, toNumber } from './layers'
 import * as S from './shapes'
 import { PRELUDE_FILE, preludeSource } from './prelude'
 import { TorchSize, convert, formatSpec, percentFormat, pyCompare, pyRepr, pyStr, strFormat } from './format'
@@ -48,6 +48,7 @@ class BreakSignal {}
 class ContinueSignal {}
 
 const MAX_STEPS = 400_000
+const STEP_LIMIT = 'Execution limit reached. Check for very large loops.'
 const MAX_NODES = 900
 
 const noop = (name: string) => new NativeFn(name, () => null)
@@ -58,7 +59,7 @@ function isTruthy(value: Value): boolean {
   if (value === null || value === false || value === 0 || value === '') return false
   if (value instanceof PyList || value instanceof PyTuple) return value.items.length > 0
   if (value instanceof PyDict) return value.map.size > 0
-  if (value instanceof PyRange) return value.items.length > 0
+  if (value instanceof PyRange) return value.length > 0
   if (value instanceof ModuleObj && (value.kind === 'modulelist' || value.kind === 'sequential' || value.kind === 'moduledict')) return value.children.size > 0
   return true
 }
@@ -295,7 +296,7 @@ export class Interpreter {
   }
 
   private exec(statement: Stmt, scope: Scope, file: string): void {
-    if (++this.steps > MAX_STEPS) throw new PyError('Execution limit reached. Check for very large loops.', statement.line, file)
+    if (++this.steps > MAX_STEPS) throw new PyError(STEP_LIMIT, statement.line, file)
     // Prelude code keeps the user's line as the location, so its operations and errors point at the user's call.
     const internal = file === PRELUDE_FILE
     const previous = this.location
@@ -310,7 +311,8 @@ export class Interpreter {
         throw error
       }
       if (internal) throw error
-      if (error instanceof RangeError) throw new PyError('Recursion is too deep', statement.line, file)
+      // Only a stack overflow is deep recursion; other RangeErrors (invalid array length …) are bad values.
+      if (error instanceof RangeError) throw new PyError(/call stack/i.test(error.message) ? 'Recursion is too deep' : `ValueError: ${error.message}`, statement.line, file)
       throw new PyError(error instanceof Error ? `Internal tracer error: ${error.message}` : 'Internal tracer error', statement.line, file)
     } finally {
       this.location = previous
@@ -334,7 +336,9 @@ export class Interpreter {
         return
       }
       case 'return': throw new ReturnSignal(statement.value ? this.evaluate(statement.value, scope, file) : null)
-      case 'pass': case 'global': case 'del': return
+      case 'pass': return
+      case 'global': case 'nonlocal': this.declare(statement.kind, statement.names, scope); return
+      case 'del': for (const target of statement.targets) this.delete(target, scope, file); return
       case 'break': throw new BreakSignal()
       case 'continue': throw new ContinueSignal()
       case 'import': this.importNames(statement.names, scope); return
@@ -344,8 +348,10 @@ export class Interpreter {
         return
       case 'for': {
         this.lastLoaderSize = null
-        const items = this.iterate(this.evaluate(statement.iter, scope, file))
-        const size = this.lastLoaderSize ?? items.length
+        const iterable = this.evaluate(statement.iter, scope, file)
+        // A range is walked lazily, so a huge one runs into the step limit instead of being built first.
+        const items: Iterable<Value> = iterable instanceof PyRange ? iterable.values() : this.iterate(iterable)
+        const size = this.lastLoaderSize ?? (iterable instanceof PyRange ? iterable.length : (items as Value[]).length)
         const training = this.training
         let broke = false
         for (const item of items) {
@@ -364,15 +370,17 @@ export class Interpreter {
       case 'while': {
         let guard = 0
         const training = this.training
+        let broke = false
         while (isTruthy(this.evaluate(statement.test, scope, file))) {
           if (++guard > 10_000) throw this.error('while loop exceeded 10,000 iterations')
           try { this.execBlock(statement.body, scope, file) } catch (signal) {
-            if (signal instanceof BreakSignal) break
+            if (signal instanceof BreakSignal) { broke = true; break }
             if (!(signal instanceof ContinueSignal)) throw signal
           }
           // A training loop's length is unknown here; one traced step stands for all of them.
           if (training !== 'done' && this.training === 'done') break
         }
+        if (!broke) this.execBlock(statement.orelse, scope, file)
         return
       }
       case 'with':
@@ -382,12 +390,19 @@ export class Interpreter {
         }
         this.execBlock(statement.body, scope, file)
         return
-      case 'try':
-        try { this.execBlock(statement.body, scope, file) } catch (error) {
-          if (!(error instanceof PyError) || !statement.handlers.length) throw error
-          this.execBlock(statement.handlers[0], scope, file)
+      case 'try': {
+        try {
+          let raised = false
+          try { this.execBlock(statement.body, scope, file) } catch (error) {
+            if (!(error instanceof PyError) || !statement.handlers.length) throw error
+            raised = true
+            this.execBlock(statement.handlers[0], scope, file)
+          }
+          // `else` runs only when the body finished without an exception; its own errors are not handled above.
+          if (!raised) this.execBlock(statement.orelse, scope, file)
         } finally { this.execBlock(statement.finalbody, scope, file) }
         return
+      }
       case 'raise': {
         const value = statement.value ? this.evaluate(statement.value, scope, file) : null
         throw this.error(typeof value === 'string' ? value : value instanceof PyInstance ? String(value.attrs.get('message') ?? value.cls.name) : `Exception raised: ${formatValue(value)}`)
@@ -477,7 +492,7 @@ export class Interpreter {
   private assign(target: Expr, value: Value, scope: Scope, file: string): void {
     switch (target.kind) {
       case 'name': {
-        scope.vars.set(target.id, value)
+        scope.binding(target.id).vars.set(target.id, value)
         const producer = value instanceof Tensor && value.producer ? this.tracer?.byId.get(value.producer) : undefined
         if (producer && !producer.variable && this.recording) producer.variable = target.id
         return
@@ -509,6 +524,69 @@ export class Interpreter {
       case 'starred': this.assign(target.value, value, scope, file); return
       default: throw this.error('Unsupported assignment target')
     }
+  }
+
+  /** `global x` / `nonlocal x`: assignments to x in this scope then write to the module or the enclosing function. */
+  private declare(kind: 'global' | 'nonlocal', names: string[], scope: Scope): void {
+    let module = scope
+    while (module.parent && module.parent !== this.builtins) module = module.parent
+    for (const name of names) {
+      let target: Scope | undefined = module
+      if (kind === 'nonlocal') {
+        target = undefined
+        for (let outer = scope.parent; outer && outer !== module; outer = outer.parent) if (outer.vars.has(name)) { target = outer; break }
+        if (!target) throw this.error(`SyntaxError: no binding for nonlocal '${name}' found`)
+      }
+      if (target !== scope) (scope.declared ??= new Map()).set(name, target)
+    }
+  }
+
+  private delete(target: Expr, scope: Scope, file: string): void {
+    switch (target.kind) {
+      case 'name':
+        if (!scope.binding(target.id).vars.delete(target.id)) throw new PyError(`NameError: name '${target.id}' is not defined`, target.line, file)
+        return
+      case 'attr': {
+        const object = this.evaluate(target.object, scope, file)
+        // Deleting a submodule, parameter or buffer also removes its parameters from the model.
+        if (object instanceof ModuleObj && (object.children.delete(target.name) || object.attrs.delete(target.name))) return
+        if (object instanceof ModuleObj && object.layer?.params.delete(target.name)) { object.layer.props.delete(target.name); return }
+        if ((object instanceof PyInstance || object instanceof PyClass) && object.attrs.delete(target.name)) return
+        throw this.error(`AttributeError: '${typeName(object)}' object has no attribute '${target.name}'`)
+      }
+      case 'subscript': {
+        const object = this.evaluate(target.object, scope, file)
+        const index = this.evaluate(target.index, scope, file)
+        if (object instanceof PyList) {
+          const removed = new Set(index instanceof PySlice ? this.sliceItems(object.items.map((_, position) => position), index) : [this.listIndex(index, object.items.length)])
+          object.items.splice(0, object.items.length, ...object.items.filter((_, position) => !removed.has(position)))
+          return
+        }
+        if (object instanceof PyDict) {
+          if (!object.map.delete(this.key(index))) throw this.error(`KeyError: ${formatValue(index)}`)
+          return
+        }
+        if (object instanceof ModuleObj && object.kind === 'moduledict') {
+          if (!object.children.delete(String(index))) throw this.error(`KeyError: '${formatValue(index)}' not in ModuleDict`)
+          return
+        }
+        if (object instanceof ModuleObj && (object.kind === 'sequential' || object.kind === 'modulelist')) {
+          const keys = [...object.children.keys()]
+          const removed = new Set(index instanceof PySlice ? this.sliceItems(keys, index) : [keys[this.listIndex(index, keys.length)]])
+          this.renumber(object, [...object.children].filter(([key]) => !removed.has(key)).map(([, child]) => child))
+          return
+        }
+        throw this.error(`TypeError: '${typeName(object)}' object doesn't support item deletion`)
+      }
+      case 'tuple': case 'list': target.items.forEach((item) => this.delete(item, scope, file)); return
+      default: throw this.error('SyntaxError: cannot delete this expression')
+    }
+  }
+
+  /** Sequential and ModuleList keep their children numbered 0, 1, 2 … after an insert or a delete, as in PyTorch. */
+  private renumber(module: ModuleObj, entries: ModuleObj[]): void {
+    module.children.clear()
+    entries.forEach((item, index) => { module.children.set(String(index), item); if (item.parent === module) item.nameInParent = String(index) })
   }
 
   // ───────────────────────────── expressions ─────────────────────────────
@@ -700,6 +778,15 @@ export class Interpreter {
     try { return pyCompare(a, b) } catch (error) { throw this.error(`TypeError: ${(error as Error).message}`) }
   }
 
+  /** sorted() and list.sort(): a stable sort by key=…, descending with reverse=True. */
+  private sortItems(items: Value[], kwargs: Map<string, Value>, site: Site): Value[] {
+    const key = kwargs.get('key') ?? null
+    const order = isTruthy(kwargs.get('reverse') ?? false) ? -1 : 1
+    const keyed = items.map((item) => [key === null ? item : this.call(key, [item], new Map(), site), item] as const)
+    keyed.sort((a, c) => order * this.compareValues(a[0], c[0]))
+    return keyed.map(([, item]) => item)
+  }
+
   private key(value: Value): Primitive {
     if (value === null || typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value
     if (value instanceof PyTuple) return `(${value.items.map(formatValue).join(',')})`
@@ -738,7 +825,7 @@ export class Interpreter {
       if (!object.map.has(key)) throw this.error(`KeyError: ${formatValue(index)}`)
       return object.map.get(key)!
     }
-    if (object instanceof PyRange) return object.items[this.listIndex(index, object.items.length)]
+    if (object instanceof PyRange) return object.at(this.listIndex(index, object.length))
     if (object instanceof ModuleObj && object.kind === 'user') {
       const getItem = this.bindFrom(object.cls!, '__getitem__', object)
       if (getItem !== undefined) return this.call(getItem, [index], new Map(), this.location)
@@ -787,7 +874,11 @@ export class Interpreter {
 
   iterate(value: Value): Value[] {
     if (value instanceof PyList || value instanceof PyTuple) return [...value.items]
-    if (value instanceof PyRange) return value.items
+    if (value instanceof PyRange) {
+      // Building more values than the step limit allows would only freeze the page.
+      if (value.length > MAX_STEPS) throw this.error(STEP_LIMIT)
+      return [...value.values()]
+    }
     if (value instanceof PyDict) return [...value.map.keys()]
     if (typeof value === 'string') return value.split('')
     if (value instanceof ModuleObj) {
@@ -848,12 +939,14 @@ export class Interpreter {
     if (left instanceof Tensor || right instanceof Tensor) return this.tensorBinary(op, left, right, line)
     if (typeof left === 'string' && typeof right === 'string' && op === '+') return left + right
     if (typeof left === 'string' && op === '%') { try { return percentFormat(left, right) } catch (error) { throw this.error(`ValueError: ${(error as Error).message}`) } }
-    if (typeof left === 'string' && typeof right === 'number' && op === '*') return left.repeat(right)
+    // Sequence repetition works from either side (3 * [1] == [1] * 3); a negative count gives an empty sequence.
+    if (op === '*' && typeof left === 'number' && (typeof right === 'string' || right instanceof PyList || right instanceof PyTuple)) return this.binary(op, right, left, line)
+    if (typeof left === 'string' && typeof right === 'number' && op === '*') return left.repeat(Math.max(0, toInt(right, 'repeat count')))
     if ((left instanceof PyList || left instanceof PyTuple) && op === '+' && (left instanceof PyTuple ? right instanceof PyTuple : right instanceof PyList)) {
       return left instanceof PyList ? new PyList([...left.items, ...(right as PyList).items]) : new (left instanceof TorchSize && right instanceof TorchSize ? TorchSize : PyTuple)([...left.items, ...(right as PyTuple).items])
     }
     if ((left instanceof PyList || left instanceof PyTuple) && op === '*' && typeof right === 'number') {
-      const items = Array.from({ length: right }, () => left.items).flat()
+      const items = Array.from({ length: Math.max(0, toInt(right, 'repeat count')) }, () => left.items).flat()
       return left instanceof PyList ? new PyList(items) : new PyTuple(items)
     }
     if (left instanceof PyDict && right instanceof PyDict && op === '|') return new PyDict([...left.map.entries(), ...right.map.entries()])
@@ -865,7 +958,7 @@ export class Interpreter {
       case '*': return a * b
       case '/': if (b === 0) throw this.error('ZeroDivisionError: division by zero'); return a / b
       case '//': if (b === 0) throw this.error('ZeroDivisionError: integer division by zero'); return Math.floor(a / b)
-      case '%': return ((a % b) + b) % b
+      case '%': if (b === 0) throw this.error('ZeroDivisionError: modulo by zero'); return ((a % b) + b) % b
       case '**': return a ** b
       case '<<': return a << b
       case '>>': return a >> b
@@ -1383,8 +1476,7 @@ export class Interpreter {
       case 'insert': return native((args) => {
         const entries = [...module.children.values()]
         if (args[1] instanceof ModuleObj) entries.splice(toInt(args[0], 'index'), 0, args[1])
-        module.children.clear()
-        entries.forEach((item, index) => { module.children.set(String(index), item); if (item.parent === module) item.nameInParent = String(index) })
+        this.renumber(module, entries)
         return null
       })
       case 'keys': return native(() => new PyList([...module.children.keys()]))
@@ -1418,6 +1510,13 @@ export class Interpreter {
         case 'pop': return native((args) => object.items.splice(args.length ? this.listIndex(args[0], object.items.length) : object.items.length - 1, 1)[0] ?? null)
         case 'insert': return native((args) => { object.items.splice(toInt(args[0], 'index'), 0, args[1]); return null })
         case 'reverse': return native(() => { object.items.reverse(); return null })
+        case 'sort': return native((_, kwargs, site) => { object.items.splice(0, object.items.length, ...this.sortItems(object.items, kwargs, site)); return null })
+        case 'remove': return native((args) => {
+          const position = object.items.findIndex((item) => equals(item, args[0]))
+          if (position < 0) throw this.error('ValueError: list.remove(x): x not in list')
+          object.items.splice(position, 1)
+          return null
+        })
         case 'copy': return native(() => new PyList([...object.items]))
         case 'index': return native((args) => object.items.findIndex((item) => equals(item, args[0])))
         case 'count': return native((args) => object.items.filter((item) => equals(item, args[0])).length)
@@ -1482,7 +1581,11 @@ export class Interpreter {
       case 'dtype': return new Dtype(tensor.dtype === 'float' ? 'torch.float32' : tensor.dtype === 'long' ? 'torch.int64' : 'torch.bool', tensor.dtype)
       case 'device': return 'cpu'
       case 'requires_grad': return tensor.role === 'parameter'
-      case 'T': case 'mT': return pass([...tensor.shape].reverse())
+      case 'T': return pass([...tensor.shape].reverse())
+      // mT/mH transpose only the last two dimensions (a batch of matrices); H needs a matrix.
+      case 'mT': case 'mH': case 'H':
+        if (name === 'H' ? tensor.shape.length !== 2 : tensor.shape.length < 2) throw this.error(`tensor.${name} needs ${name === 'H' ? 'a 2-D tensor' : 'at least 2 dimensions'}, got ${S.fmt(tensor.shape)}`)
+        return pass(S.transpose(tensor.shape, -2, -1))
       case 'data': return tensor
       case 'size': return native((args) => args.length ? tensor.shape[S.normalizeDim(toInt(args[0], 'dim'), tensor.shape.length)] : new TorchSize(tensor.shape))
       case 'dim': return native(() => tensor.shape.length)
@@ -1514,17 +1617,18 @@ export class Interpreter {
         const dtype = [...args, ...kwargs.values()].find((item) => item instanceof Dtype) as Dtype | undefined
         return pass(tensor.shape, dtype?.kind ?? tensor.dtype)
       })
-      case 'unsqueeze': return native((args) => {
-        const dim = toInt(args[0], 'dim')
-        const axis = dim < 0 ? dim + tensor.shape.length + 1 : dim
+      case 'unsqueeze': return native((args, kwargs) => {
+        // The new axis may go anywhere in [-(ndim + 1), ndim].
+        const axis = S.normalizeDim(toInt(args[0] ?? kwargs.get('dim')!, 'dim'), tensor.shape.length + 1)
         const shape = [...tensor.shape]
         shape.splice(axis, 0, 1)
         return pass(shape)
       })
-      case 'squeeze': return native((args) => {
-        if (!args.length) return pass(tensor.shape.filter((size) => size !== 1))
-        const axis = S.normalizeDim(toInt(args[0], 'dim'), tensor.shape.length)
-        return pass(tensor.shape.filter((size, index) => index !== axis || size !== 1))
+      case 'squeeze': return native((args, kwargs) => {
+        const dim = args[0] ?? kwargs.get('dim') ?? null
+        if (dim === null) return pass(tensor.shape.filter((size) => size !== 1))
+        const axes = toInts(dim, 'dim').map((item) => S.normalizeDim(item, tensor.shape.length))
+        return pass(tensor.shape.filter((size, index) => !axes.includes(index) || size !== 1))
       })
       case 'expand': return native((args) => {
         const sizes = shapeArgs(args, 'sizes')
@@ -1552,7 +1656,7 @@ export class Interpreter {
       })
       case 'argmax': case 'argmin': return native((args, kwargs) => {
         const dim = this.dims(args, kwargs)
-        return pass(S.reduce(tensor.shape, dim === null ? null : toInt(dim, 'dim'), Boolean(kwargs.get('keepdim') ?? false)), 'long')
+        return pass(S.reduce(tensor.shape, dim === null ? null : toInt(dim, 'dim'), Boolean(kwargs.get('keepdim') ?? args[1] ?? false)), 'long')
       })
       case 'softmax': case 'log_softmax': return native(() => this.recordOp(name, 'activation', [tensor], new Tensor(tensor.shape), this.location.line))
       case 'exp': case 'log': case 'sigmoid': case 'tanh': case 'relu': case 'sqrt': case 'rsqrt': case 'sin': case 'cos': case 'square': case 'neg': case 'abs': case 'reciprocal':
@@ -1608,7 +1712,7 @@ export class Interpreter {
       })
       case 'any': case 'all': return native((args, kwargs) => {
         const dim = this.dims(args, kwargs)
-        return pass(S.reduce(tensor.shape, dim === null ? null : toInt(dim, 'dim'), Boolean(kwargs.get('keepdim') ?? false)), 'bool')
+        return pass(S.reduce(tensor.shape, dim === null ? null : toInt(dim, 'dim'), Boolean(kwargs.get('keepdim') ?? args[1] ?? false)), 'bool')
       })
       case 'eq': case 'ne': case 'lt': case 'le': case 'gt': case 'ge': case 'greater': case 'less': case 'equal': case 'logical_and': case 'logical_or': case 'logical_xor': case 'isclose':
         return native((args) => {
@@ -1798,6 +1902,8 @@ export class Interpreter {
     }
     switch (name) {
       case 'maximum': case 'minimum': case 'where': {
+        // torch.where(condition) alone is nonzero(as_tuple=True): one index tensor per dimension.
+        if (name === 'where' && args.length === 1) return this.call(this.tensorAttr(t(first), 'nonzero'), [], new Map([['as_tuple', true]]), this.location)
         const tensors = args.filter((item): item is Tensor => item instanceof Tensor)
         const shape = tensors.reduce((acc, tensor) => S.broadcast(acc, tensor.shape, name), [] as number[])
         return this.recordOp(name, 'generic', tensors, new Tensor(shape), line)
@@ -1828,6 +1934,7 @@ export class Interpreter {
     })
     fn('range', (args) => {
       const values = args.map((arg) => toInt(arg, 'range'))
+      if (values[2] === 0) throw this.error('ValueError: range() arg 3 must not be zero')
       if (values.length === 1) return new PyRange(0, values[0], 1)
       return new PyRange(values[0], values[1], values[2] ?? 1)
     })
@@ -1839,6 +1946,7 @@ export class Interpreter {
         return len !== undefined ? toInt(this.call(len, [], new Map(), this.location), '__len__') : value.children.size
       }
       if (value instanceof PyDict) return value.map.size
+      if (value instanceof PyRange) return value.length
       if (this.atlasKind(value) === 'DataLoader') { const loader = value as PyInstance; const size = this.datasetSize(loader.attrs.get('dataset') ?? null); const batch = toInt(loader.attrs.get('batch_size') ?? 1, 'batch_size'); return loader.attrs.get('drop_last') === true ? Math.floor(size / batch) : Math.ceil(size / batch) }
       if (value instanceof PyInstance) return this.datasetSize(value)
       return this.iterate(value).length
@@ -1854,9 +1962,15 @@ export class Interpreter {
     fn('min', extreme(-1))
     fn('sum', (args) => this.iterate(args[0]).reduce((total: Value, item) => this.binary('+', total, item, this.location.line), args[1] ?? 0))
     fn('abs', (args) => args[0] instanceof Tensor ? args[0] : Math.abs(toNumber(args[0], 'abs')))
-    fn('round', (args) => args.length > 1 ? Number(toNumber(args[0], 'round').toFixed(toInt(args[1], 'ndigits'))) : Math.round(toNumber(args[0], 'round')))
+    fn('round', (args) => {
+      const value = toNumber(args[0], 'round')
+      if (args.length > 1 && args[1] !== null) return Number(value.toFixed(toInt(args[1], 'ndigits')))
+      // Python rounds halves to the even neighbour: round(2.5) == 2, round(3.5) == 4.
+      return Math.abs(value % 1) === 0.5 ? 2 * Math.round(value / 2) : Math.round(value)
+    })
     fn('pow', (args) => toNumber(args[0], 'pow') ** toNumber(args[1], 'pow'))
-    fn('divmod', (args) => tupleOf([Math.floor(toNumber(args[0], 'a') / toNumber(args[1], 'b')), toNumber(args[0], 'a') % toNumber(args[1], 'b')]))
+    // Floor division and a remainder with the divisor's sign: divmod(-7, 2) == (-4, 1).
+    fn('divmod', (args) => tupleOf([this.binary('//', args[0], args[1], this.location.line), this.binary('%', args[0], args[1], this.location.line)]))
     fn('zip', (args) => {
       const lists = args.map((arg) => this.iterate(arg))
       const length = Math.min(...lists.map((list) => list.length))
@@ -1864,13 +1978,7 @@ export class Interpreter {
     })
     fn('enumerate', (args, kwargs) => new PyList(this.iterate(args[0]).map((item, index) => tupleOf([index + toInt(args[1] ?? kwargs.get('start') ?? 0, 'start'), item]))))
     fn('reversed', (args) => new PyList(this.iterate(args[0]).reverse()))
-    fn('sorted', (args, kwargs, site) => {
-      const key = kwargs.get('key') ?? null
-      const keyed = this.iterate(args[0]).map((item) => [key === null ? item : this.call(key, [item], new Map(), site), item] as const)
-      keyed.sort((a, c) => this.compareValues(a[0], c[0]))
-      if (isTruthy(kwargs.get('reverse') ?? false)) keyed.reverse()
-      return new PyList(keyed.map(([, item]) => item))
-    })
+    fn('sorted', (args, kwargs, site) => new PyList(this.sortItems(this.iterate(args[0]), kwargs, site)))
     fn('format', (args) => this.pyFormat(args[0], args.length > 1 ? String(args[1]) : ''))
     fn('any', (args) => this.iterate(args[0]).some(isTruthy))
     fn('all', (args) => this.iterate(args[0]).every(isTruthy))
@@ -1893,6 +2001,8 @@ export class Interpreter {
         if (type instanceof NativeFn) {
           if (type.name === 'Tensor') return value instanceof Tensor
           if (type.name === 'int') return typeof value === 'number' && Number.isInteger(value) && typeof value !== 'boolean'
+          // Numbers carry no int/float tag here; a whole number counts as an int, as typeName() reports it.
+          // Numbers carry no int/float tag, so 0.0 and 3 look alike; accepting both keeps isinstance(x, float) checks on float settings passing.
           if (type.name === 'float') return typeof value === 'number'
           if (type.name === 'Module') return value instanceof ModuleObj
           if (isLayer(type.name)) return value instanceof ModuleObj && value.className === type.name
@@ -2070,21 +2180,29 @@ export class Interpreter {
         const x = t(args[0], 'F.interpolate')
         return this.recordOp('interpolate', 'upsample', [x], new Tensor(interpolateShape(x.shape, args[1] ?? kwargs.get('size') ?? null, args[2] ?? kwargs.get('scale_factor') ?? null)), line(), { mode: String(kwargs.get('mode') ?? 'nearest') })
       }),
-      ...(['max_pool1d', 'max_pool2d', 'avg_pool1d', 'avg_pool2d'] as const).map((name) => native(name, (args, kwargs) => {
-        const x = t(args[0], `F.${name}`)
-        const dims = name.endsWith('1d') ? 1 : 2
+      ...(['max_pool1d', 'max_pool2d', 'max_pool3d', 'avg_pool1d', 'avg_pool2d', 'avg_pool3d'] as const).map((name) => native(name, (args, kwargs) => {
+        // max_pool(input, kernel_size, stride, padding, dilation, ceil_mode, return_indices)
+        // avg_pool(input, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override)
+        const x = t(args[0] ?? kwargs.get('input'), `F.${name}`)
+        const dims = Number(name.slice(-2, -1))
+        const max = name.startsWith('max')
         const kernel = nTuple(args[1] ?? kwargs.get('kernel_size')!, dims, 'kernel_size')
         const strideValue = args[2] ?? kwargs.get('stride') ?? null
         const stride = strideValue === null ? kernel : nTuple(strideValue, dims, 'stride')
         const padding = nTuple(args[3] ?? kwargs.get('padding') ?? 0, dims, 'padding')
-        const shape = [...x.shape.slice(0, -dims), ...x.shape.slice(-dims).map((size, index) => S.convAxis(size, kernel[index], stride[index], padding[index]))]
-        return this.recordOp(name, 'pool', [x], new Tensor(shape), line(), { kernel_size: kernel[0], stride: stride[0] })
+        const dilation = max ? nTuple(args[4] ?? kwargs.get('dilation') ?? 1, dims, 'dilation') : Array(dims).fill(1)
+        const ceilMode = isTruthy(args[max ? 5 : 4] ?? kwargs.get('ceil_mode') ?? false)
+        const shape = [...x.shape.slice(0, -dims), ...x.shape.slice(-dims).map((size, index) => S.poolAxis(size, kernel[index], stride[index], padding[index], dilation[index], ceilMode))]
+        const output = this.recordOp(name, 'pool', [x], new Tensor(shape), line(), { kernel_size: kernel[0], stride: stride[0] }) as Tensor
+        return max && isTruthy(args[6] ?? kwargs.get('return_indices') ?? false) ? new PyTuple([output, new Tensor(shape, output.producer, 'long')]) : output
       })),
-      ...(['adaptive_avg_pool1d', 'adaptive_avg_pool2d', 'adaptive_max_pool2d'] as const).map((name) => native(name, (args, kwargs) => {
-        const x = t(args[0], `F.${name}`)
-        const dims = name.endsWith('1d') ? 1 : 2
-        const size = nTuple(args[1] ?? kwargs.get('output_size')!, dims, 'output_size')
-        return this.recordOp(name, 'pool', [x], new Tensor([...x.shape.slice(0, -dims), ...size]), line(), { output_size: size[0] })
+      ...(['adaptive_avg_pool1d', 'adaptive_avg_pool2d', 'adaptive_avg_pool3d', 'adaptive_max_pool1d', 'adaptive_max_pool2d', 'adaptive_max_pool3d'] as const).map((name) => native(name, (args, kwargs) => {
+        const x = t(args[0] ?? kwargs.get('input'), `F.${name}`)
+        const dims = Number(name.slice(-2, -1))
+        const size = adaptiveSize(args[1] ?? kwargs.get('output_size')!, dims)
+        const shape = [...x.shape.slice(0, -dims), ...x.shape.slice(-dims).map((value, index) => size[index] ?? value)]
+        const output = this.recordOp(name, 'pool', [x], new Tensor(shape), line(), { output_size: size[0] ?? 'None' }) as Tensor
+        return name.includes('max') && isTruthy(args[2] ?? kwargs.get('return_indices') ?? false) ? new PyTuple([output, new Tensor(shape, output.producer, 'long')]) : output
       })),
       ...['cross_entropy', 'mse_loss', 'l1_loss', 'smooth_l1_loss', 'huber_loss', 'nll_loss', 'binary_cross_entropy', 'binary_cross_entropy_with_logits', 'kl_div', 'cosine_embedding_loss',
         'margin_ranking_loss', 'triplet_margin_loss', 'soft_margin_loss', 'hinge_embedding_loss', 'poisson_nll_loss', 'gaussian_nll_loss', 'multilabel_soft_margin_loss'].map((name) => native(name, (args, kwargs) => {
@@ -2128,7 +2246,9 @@ export class Interpreter {
         const padding = nTuple(args[4] ?? kwargs.get('padding') ?? 0, dims, 'padding')
         const outputPadding = nTuple(args[5] ?? kwargs.get('output_padding') ?? 0, dims, 'output_padding')
         const groups = toInt(args[6] ?? kwargs.get('groups') ?? 1, 'groups')
-        const spatial = x.shape.slice(-dims).map((size, index) => (size - 1) * stride[index] - 2 * padding[index] + weight.shape[2 + index] + outputPadding[index])
+        // conv_transpose(input, weight, bias, stride, padding, output_padding, groups, dilation)
+        const dilation = nTuple(args[7] ?? kwargs.get('dilation') ?? 1, dims, 'dilation')
+        const spatial = x.shape.slice(-dims).map((size, index) => S.transposedConvAxis(size, weight.shape[2 + index], stride[index], padding[index], outputPadding[index], dilation[index]))
         return this.recordOp(`conv_transpose${dims}d`, 'upsample', [x, weight], new Tensor([...x.shape.slice(0, -dims - 1), weight.shape[1] * groups, ...spatial]), line())
       })),
       native('unfold', (args, kwargs) => {
@@ -2162,20 +2282,6 @@ export class Interpreter {
         const [c, h, w] = x.shape.slice(-3)
         return this.recordOp('pixel_unshuffle', 'downsample', [x], new Tensor([...x.shape.slice(0, -3), c * r * r, h / r, w / r]), line())
       }),
-      ...(['max_pool3d', 'avg_pool3d'] as const).map((name) => native(name, (args, kwargs) => {
-        const x = t(args[0], `F.${name}`)
-        const kernel = nTuple(args[1] ?? kwargs.get('kernel_size')!, 3, 'kernel_size')
-        const strideValue = args[2] ?? kwargs.get('stride') ?? null
-        const stride = strideValue === null ? kernel : nTuple(strideValue, 3, 'stride')
-        const padding = nTuple(args[3] ?? kwargs.get('padding') ?? 0, 3, 'padding')
-        return this.recordOp(name, 'pool', [x], new Tensor([...x.shape.slice(0, -3), ...x.shape.slice(-3).map((size, index) => S.convAxis(size, kernel[index], stride[index], padding[index]))]), line())
-      })),
-      ...(['adaptive_avg_pool3d', 'adaptive_max_pool1d', 'adaptive_max_pool3d'] as const).map((name) => native(name, (args, kwargs) => {
-        const x = t(args[0], `F.${name}`)
-        const dims = name.endsWith('1d') ? 1 : 3
-        const size = nTuple(args[1] ?? kwargs.get('output_size')!, dims, 'output_size')
-        return this.recordOp(name, 'pool', [x], new Tensor([...x.shape.slice(0, -dims), ...size]), line())
-      })),
       native('one_hot', (args, kwargs) => { const x = t(args[0], 'F.one_hot'); return this.recordOp('one_hot', 'embedding', [x], new Tensor([...x.shape, toInt(args[1] ?? kwargs.get('num_classes')!, 'num_classes')]), line()) }),
       native('embedding', (args) => { const x = t(args[0], 'F.embedding'); const weight = t(args[1], 'F.embedding'); return this.recordOp('embedding', 'embedding', [x, weight], new Tensor([...x.shape, weight.shape[1]]), line()) }),
       native('glu', (args, kwargs) => {

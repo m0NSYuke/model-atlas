@@ -65,7 +65,9 @@ export function transpose(shape: number[], a: number, b: number): number[] {
 
 export function permute(shape: number[], dims: number[]): number[] {
   if (dims.length !== shape.length) throw new PyError(`permute expects ${shape.length} dimensions, got ${dims.length}`)
-  return dims.map((dim) => shape[normalizeDim(dim, shape.length)])
+  const axes = dims.map((dim) => normalizeDim(dim, shape.length))
+  if (new Set(axes).size !== axes.length) throw new PyError(`permute: repeated dims are not allowed, got (${dims.join(', ')})`)
+  return axes.map((axis) => shape[axis])
 }
 
 export function reduce(shape: number[], dim: number | number[] | null, keepdim: boolean): number[] {
@@ -87,8 +89,10 @@ export function concat(shapes: number[][], dim: number): number[] {
 }
 
 export function stack(shapes: number[][], dim: number): number[] {
+  if (!shapes.length) throw new PyError('torch.stack needs at least one tensor')
   shapes.forEach((shape) => { if (fmt(shape) !== fmt(shapes[0])) throw new PyError(`torch.stack needs equal shapes, got ${shapes.map(fmt).join(', ')}`) })
-  const axis = dim < 0 ? dim + shapes[0].length + 1 : dim
+  // The new axis may go anywhere in [-(ndim + 1), ndim].
+  const axis = normalizeDim(dim, shapes[0].length + 1)
   const result = [...shapes[0]]
   result.splice(axis, 0, shapes.length)
   return result
@@ -98,6 +102,18 @@ export function stack(shapes: number[][], dim: number): number[] {
 export function convAxis(size: number, kernel: number, stride: number, padding: number, dilation = 1, name = 'kernel_size'): number {
   const result = Math.floor((size + 2 * padding - dilation * (kernel - 1) - 1) / stride + 1)
   if (result < 1) throw new PyError(`${name}=${kernel} with padding=${padding} is larger than the input size ${size}`)
+  return result
+}
+
+/**
+ * Output length of a pooling window along one axis. With ceil_mode the last partial window counts too,
+ * unless it would start beyond the input and its left padding (PyTorch's pooling_output_shape).
+ */
+export function poolAxis(size: number, kernel: number, stride: number, padding: number, dilation = 1, ceilMode = false): number {
+  const span = size + 2 * padding - dilation * (kernel - 1) - 1
+  let result = (ceilMode ? Math.ceil(span / stride) : Math.floor(span / stride)) + 1
+  if (ceilMode && (result - 1) * stride >= size + padding) result--
+  if (result < 1) throw new PyError(`kernel_size=${kernel} with padding=${padding} is larger than the input size ${size}`)
   return result
 }
 
