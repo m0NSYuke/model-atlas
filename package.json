@@ -1,7 +1,19 @@
 {
-  "name": "3d-model-atlas",
+  "name": "model-atlas",
   "private": true,
   "version": "0.1.0",
+  "description": "Write PyTorch in the browser and watch its 3D architecture, tensor shapes and parameter counts update live.",
+  "keywords": [
+    "pytorch",
+    "deep-learning",
+    "neural-network",
+    "visualization",
+    "3d",
+    "threejs",
+    "react",
+    "education"
+  ],
+  "homepage": "https://m0nsyuke.github.io/model-atlas/",
   "type": "module",
   "license": "MIT",
   "repository": {

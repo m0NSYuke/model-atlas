@@ -4,6 +4,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+**[Try it online →](https://m0nsyuke.github.io/model-atlas/)** No install, no sign-in; everything runs in your browser.
+
 **Write PyTorch code in the browser and watch its 3D architecture update live.** Change one line (number of layers, channels, strides, attention heads…) and the 3D structure, tensor shapes and parameter counts are rebuilt immediately; if the code is wrong, the offending line is pointed out. The interface is available in English and Chinese.
 
 ![Model Atlas demo: editing code, the 3D view, the flat diagram, the model library and switching languages](docs/media/demo.gif)
